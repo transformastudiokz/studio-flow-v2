@@ -11,6 +11,9 @@ import { format, startOfMonth, endOfMonth, parseISO, differenceInMinutes } from 
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import { Link } from "react-router-dom";
+import { fetchClientStatuses, getClientStatusForBooking } from "@/lib/client-status";
+import { ClientStatusIndicators, ClientStatusLegend } from "@/components/clients/ClientStatusIndicators";
 
 const getCoachName = (coach: any) => {
   if (!coach) return 'Без тренера';
@@ -76,7 +79,7 @@ const Attendance = () => {
             coach:coaches(id, name),
             bookings:bookings(
                 id, status, user_id,
-                user:profiles(first_name, last_name, phone)
+                user:profiles(id, first_name, last_name, phone)
             )
         `)
         .gte('start_time', `${dateFrom}T00:00:00`)
@@ -94,7 +97,21 @@ const Attendance = () => {
         filteredData = filteredData.filter((s: any) => s.class_type?.id === filterClassType);
       }
 
-      return filteredData;
+      const userIds = filteredData.flatMap((session: any) =>
+        (session.bookings || []).map((booking: any) => booking.user?.id).filter(Boolean),
+      );
+      const clientStatuses = await fetchClientStatuses(userIds);
+
+      return filteredData.map((session: any) => ({
+        ...session,
+        bookings: (session.bookings || []).map((booking: any) => ({
+          ...booking,
+          clientStatus: getClientStatusForBooking(
+            clientStatuses.get(booking.user?.id),
+            booking.id,
+          ),
+        })),
+      }));
     }
   });
 
@@ -202,6 +219,7 @@ const Attendance = () => {
         toast.success("Статус изменен");
         setPendingBookingId(null);
         queryClient.invalidateQueries({ queryKey: ['attendance_report'] });
+        queryClient.invalidateQueries({ queryKey: ['dashboard_upcoming_classes'] });
     },
     onError: (err: any) => {
         setPendingBookingId(null);
@@ -402,6 +420,8 @@ const Attendance = () => {
         </Button>
       </div>
 
+      <ClientStatusLegend className="rounded-lg border bg-white px-4 py-3 shadow-sm" />
+
       {/* --- ОТОБРАЖЕНИЕ ДАННЫХ (АДАПТИВНОЕ) --- */}
       {isLoading ? <Loader2 className="animate-spin w-8 h-8 mx-auto mt-10" /> : (
         <>
@@ -472,7 +492,16 @@ const Attendance = () => {
                                                             )}
 
                                                             <div>
-                                                                <span className="font-medium">{client ? `${client.first_name} ${client.last_name || ''}` : "Неизвестный"}</span>
+                                                                <div className="flex items-center gap-2">
+                                                                    {client ? (
+                                                                        <Link className="font-medium hover:text-primary hover:underline" to={`/clients/${client.id}`}>
+                                                                            {client.first_name} {client.last_name || ''}
+                                                                        </Link>
+                                                                    ) : (
+                                                                        <span className="font-medium">Неизвестный</span>
+                                                                    )}
+                                                                    <ClientStatusIndicators status={booking.clientStatus} />
+                                                                </div>
                                                                 <div className="text-xs text-gray-400">{client?.phone}</div>
                                                             </div>
                                                         </div>
@@ -574,8 +603,15 @@ const Attendance = () => {
                                   return (
                                       <div key={booking.id} className={`p-3 rounded-lg border ${bgClass} flex flex-col gap-2`}>
                                           <div className="flex justify-between items-center">
-                                              <div className="font-semibold text-sm truncate max-w-[160px]">
-                                                  {client ? `${client.first_name} ${client.last_name || ''}` : "Неизвестный"}
+                                              <div className="flex min-w-0 items-center gap-2">
+                                                {client ? (
+                                                  <Link className="truncate text-sm font-semibold hover:text-primary hover:underline" to={`/clients/${client.id}`}>
+                                                    {client.first_name} {client.last_name || ''}
+                                                  </Link>
+                                                ) : (
+                                                  <div className="truncate text-sm font-semibold">Неизвестный</div>
+                                                )}
+                                                <ClientStatusIndicators status={booking.clientStatus} />
                                               </div>
                                               {/* Кнопка WhatsApp (КРУПНАЯ для пальца) */}
                                               {client?.phone && (

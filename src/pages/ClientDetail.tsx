@@ -21,7 +21,14 @@ export default function ClientDetail() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [isSellModalOpen, setIsSellModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedPlanId, setSelectedPlanId] = useState("");
+  const [editForm, setEditForm] = useState({
+    first_name: "",
+    last_name: "",
+    phone: "",
+    email: "",
+  });
 
   // Загрузка данных клиента
   const { data: client, isLoading: isClientLoading } = useQuery({
@@ -82,6 +89,63 @@ export default function ClientDetail() {
       if (error) throw error;
       return data;
     }
+  });
+
+  const openEditModal = () => {
+    setEditForm({
+      first_name: client?.first_name || "",
+      last_name: client?.last_name || "",
+      phone: client?.phone || "",
+      email: client?.email || "",
+    });
+    setIsEditModalOpen(true);
+  };
+
+  const updateClientMutation = useMutation({
+    mutationFn: async () => {
+      const firstName = editForm.first_name.trim();
+      const cleanPhone = editForm.phone.replace(/\D/g, "");
+
+      if (!firstName) throw new Error("Введите имя клиента");
+      if (cleanPhone.length < 10) {
+        throw new Error("Введите корректный телефон — минимум 10 цифр");
+      }
+
+      const { data: duplicatePhone, error: duplicateError } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("phone", cleanPhone)
+        .neq("id", id)
+        .limit(1);
+
+      if (duplicateError) throw duplicateError;
+      if (duplicatePhone?.length) {
+        throw new Error("Клиент с таким телефоном уже существует");
+      }
+
+      const { error } = await supabase
+        .from("profiles")
+        .update({
+          first_name: firstName,
+          last_name: editForm.last_name.trim() || null,
+          phone: cleanPhone,
+          email: editForm.email.trim().toLocaleLowerCase() || null,
+        })
+        .eq("id", id);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["client", id] });
+      queryClient.invalidateQueries({ queryKey: ["clients"] });
+      queryClient.invalidateQueries({ queryKey: ["attendance_report"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard_upcoming_classes"] });
+      setIsEditModalOpen(false);
+      toast({ title: "Сохранено", description: "Данные клиента обновлены" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Не удалось сохранить", description: error.message, variant: "destructive" });
+    },
   });
 
   // Продажа абонемента
@@ -152,6 +216,87 @@ export default function ClientDetail() {
                     </div>
                   </div>
                 </div>
+              <div className="flex shrink-0 flex-wrap gap-2">
+              <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
+                <Button size="sm" variant="outline" onClick={openEditModal}>
+                  <Edit className="mr-2 h-4 w-4" />
+                  Редактировать
+                </Button>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Редактирование клиента</DialogTitle>
+                  </DialogHeader>
+                  <div className="grid gap-4 py-2">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label htmlFor="client-first-name">Имя *</Label>
+                        <Input
+                          id="client-first-name"
+                          value={editForm.first_name}
+                          onChange={(event) =>
+                            setEditForm({ ...editForm, first_name: event.target.value })
+                          }
+                          autoFocus
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="client-last-name">Фамилия</Label>
+                        <Input
+                          id="client-last-name"
+                          value={editForm.last_name}
+                          onChange={(event) =>
+                            setEditForm({ ...editForm, last_name: event.target.value })
+                          }
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="client-phone">Телефон *</Label>
+                      <Input
+                        id="client-phone"
+                        type="tel"
+                        value={editForm.phone}
+                        onChange={(event) =>
+                          setEditForm({ ...editForm, phone: event.target.value })
+                        }
+                        placeholder="7 700 000 00 00"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Новый номер используется в карточке и WhatsApp. Логин клиента пока остаётся прежним.
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="client-email">Email</Label>
+                      <Input
+                        id="client-email"
+                        type="email"
+                        value={editForm.email}
+                        onChange={(event) =>
+                          setEditForm({ ...editForm, email: event.target.value })
+                        }
+                        placeholder="client@example.com"
+                      />
+                    </div>
+                    <div className="flex justify-end gap-2 pt-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setIsEditModalOpen(false)}
+                        disabled={updateClientMutation.isPending}
+                      >
+                        Отмена
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={() => updateClientMutation.mutate()}
+                        disabled={updateClientMutation.isPending}
+                      >
+                        {updateClientMutation.isPending ? "Сохранение..." : "Сохранить"}
+                      </Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
               <Dialog open={isSellModalOpen} onOpenChange={setIsSellModalOpen}>
                 <DialogTrigger asChild>
                   <Button size="sm" className="shrink-0">
@@ -189,6 +334,7 @@ export default function ClientDetail() {
                   </div>
                 </DialogContent>
               </Dialog>
+              </div>
               </div>
             </CardContent>
           </Card>
