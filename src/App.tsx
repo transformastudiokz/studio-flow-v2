@@ -3,11 +3,16 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from "react-router-dom";
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Session } from "@supabase/supabase-js";
 import { Loader2, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  getRoleCheckMode,
+  shouldBlockProtectedRoute,
+  type RoleCheckMode,
+} from "@/lib/auth-guard";
 
 // === Layouts ===
 import { AdminLayout } from "./components/layout/AdminLayout";
@@ -52,64 +57,103 @@ import ClientPricing from "./pages/portal/ClientPricing";
 const queryClient = new QueryClient();
 
 // === КОМПОНЕНТ ЗАЩИТЫ ===
-const ProtectedRoute = ({ children, checkAdmin = false }: { children?: React.ReactNode, checkAdmin?: boolean }) => {
+export const ProtectedRoute = ({ children, checkAdmin = false }: { children?: React.ReactNode, checkAdmin?: boolean }) => {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
-  const [isCheckingRole, setIsCheckingRole] = useState(false);
+  const activeUserIdRef = useRef<string | null>(null);
+  const roleCheckRef = useRef<{ userId: string; promise: Promise<void> } | null>(null);
+
+  const checkUserRole = useCallback((userId: string, mode: RoleCheckMode) => {
+    if (roleCheckRef.current?.userId === userId) {
+      return roleCheckRef.current.promise;
+    }
+
+    const promise = (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', userId)
+          .maybeSingle();
+
+        if (activeUserIdRef.current !== userId) return;
+
+        if (error) {
+          console.error("Ошибка проверки роли (RLS или рекурсия):", error);
+          if (mode === "blocking") setIsAdmin(false);
+          return;
+        }
+
+        setIsAdmin(['admin', 'owner'].includes(data?.role));
+      } catch (err) {
+        console.error("Критическая ошибка:", err);
+        if (activeUserIdRef.current === userId && mode === "blocking") {
+          setIsAdmin(false);
+        }
+      }
+    })();
+
+    roleCheckRef.current = { userId, promise };
+    void promise.finally(() => {
+      if (roleCheckRef.current?.promise === promise) {
+        roleCheckRef.current = null;
+      }
+    });
+
+    return promise;
+  }, []);
 
   useEffect(() => {
-    // Инициализация сессии
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      if (session?.user && checkAdmin) {
-        checkUserRole(session.user.id);
-      } else {
+    let isActive = true;
+
+    const applySession = (nextSession: Session | null) => {
+      if (!isActive) return;
+
+      setSession(nextSession);
+
+      if (!nextSession?.user) {
+        activeUserIdRef.current = null;
         setIsAdmin(false);
+        return;
       }
+
+      if (!checkAdmin) {
+        activeUserIdRef.current = nextSession.user.id;
+        setIsAdmin(false);
+        return;
+      }
+
+      const mode = getRoleCheckMode(activeUserIdRef.current, nextSession.user.id);
+      activeUserIdRef.current = nextSession.user.id;
+
+      if (mode === "blocking") {
+        setIsAdmin(null);
+      }
+
+      void checkUserRole(nextSession.user.id, mode);
+    };
+
+    // Первая проверка блокирует интерфейс, пока права пользователя неизвестны.
+    void supabase.auth.getSession().then(({ data: { session } }) => applySession(session));
+
+    // Последующие обновления токена проверяют права в фоне, не размонтируя формы.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      applySession(nextSession);
     });
 
-    // Подписка на изменения авторизации
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (session?.user && checkAdmin) {
-        checkUserRole(session.user.id);
-      } else {
-        setIsAdmin(false);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [checkAdmin]);
-
-  const checkUserRole = async (userId: string) => {
-    setIsCheckingRole(true);
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', userId)
-        .maybeSingle();
-
-      if (error) {
-        console.error("Ошибка проверки роли (RLS или рекурсия):", error);
-        setIsAdmin(false);
-      } else {
-        setIsAdmin(['admin', 'owner'].includes(data?.role));
-      }
-    } catch (err) {
-      console.error("Критическая ошибка:", err);
-      setIsAdmin(false);
-    } finally {
-      setIsCheckingRole(false);
-    }
-  };
+    return () => {
+      isActive = false;
+      activeUserIdRef.current = null;
+      subscription.unsubscribe();
+    };
+  }, [checkAdmin, checkUserRole]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
   };
 
   // 1. Состояние загрузки
-  if (session === undefined || (checkAdmin && session && (isAdmin === null || isCheckingRole))) {
+  if (shouldBlockProtectedRoute(session, checkAdmin, isAdmin)) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-gray-50">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
