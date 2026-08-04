@@ -11,10 +11,11 @@ type Props = {
   session: ScheduleSession;
   compact?: boolean;
   hasConflict?: boolean;
+  weekCard?: boolean;
   onOpen: (session: ScheduleSession) => void;
 };
 
-export function ScheduleSessionCard({ session, compact = false, hasConflict = false, onOpen }: Props) {
+export function ScheduleSessionCard({ session, compact = false, hasConflict = false, weekCard = false, onOpen }: Props) {
   const booked = sessionBookingCount(session);
   const isFull = booked >= session.capacity;
   const isCancelled = session.booking_status === "cancelled";
@@ -46,20 +47,27 @@ export function ScheduleSessionCard({ session, compact = false, hasConflict = fa
     >
       <span className="absolute inset-y-0 left-0 w-1" style={{ backgroundColor: color }} aria-hidden="true" />
       <div className="flex w-full items-center justify-between gap-1 pl-1">
-        <span className="tabular-nums text-[10px] font-bold text-foreground/75">
+        <span className={cn("tabular-nums font-bold text-foreground/75", weekCard ? "text-[11px]" : "text-[10px]")}>
           {format(parseISO(session.start_time), "HH:mm")}–{format(parseISO(session.end_time), "HH:mm")}
         </span>
-        {hasConflict ? <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-red-500" aria-label="Конфликт времени" /> : null}
+        <span className="flex items-center gap-1">
+          {hasConflict ? <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-red-500" aria-label="Конфликт времени" /> : null}
+          {weekCard ? (
+            <span className={cn("inline-flex shrink-0 items-center gap-0.5 rounded bg-white/80 px-1 py-0.5 text-[9px] font-bold tabular-nums", isFull ? "text-red-700" : booked / Math.max(session.capacity, 1) >= 0.75 ? "text-amber-700" : "text-emerald-700")}>
+              <Users className="h-2.5 w-2.5" /> {booked}/{session.capacity}
+            </span>
+          ) : null}
+        </span>
       </div>
       <div className="mt-0.5 line-clamp-2 pl-1 text-[12px] font-semibold leading-tight text-foreground">
         {session.class_type?.name || "Занятие"}
       </div>
       {!compact ? (
         <>
-          <div className="mt-1 truncate pl-1 text-[10px] text-muted-foreground">
-            {session.coach?.name || "Без тренера"}
+          <div className={cn("mt-1 pl-1 text-muted-foreground", weekCard ? "line-clamp-2 text-[10px] leading-tight" : "truncate text-[10px]")}>
+            {session.coach?.name || "Без тренера"}{weekCard ? ` • ${room}` : null}
           </div>
-          <div className="truncate pl-1 text-[10px] text-muted-foreground">{room}</div>
+          {!weekCard ? <div className="truncate pl-1 text-[10px] text-muted-foreground">{room}</div> : null}
         </>
       ) : null}
       <div className="mt-auto flex items-center justify-between gap-1 pl-1 pt-1">
@@ -76,7 +84,7 @@ export function ScheduleSessionCard({ session, compact = false, hasConflict = fa
             </span>
           ) : null}
         </span>
-        <span
+        {!weekCard ? <span
           className={cn(
             "inline-flex shrink-0 items-center gap-0.5 rounded-full px-1 py-0.5 text-[9px] font-bold tabular-nums",
             isFull ? "bg-red-100 text-red-700" : booked / Math.max(session.capacity, 1) >= 0.75 ? "bg-amber-100 text-amber-700" : "bg-emerald-50 text-emerald-700",
@@ -84,7 +92,7 @@ export function ScheduleSessionCard({ session, compact = false, hasConflict = fa
           title={isFull ? "Мест нет" : `${booked} из ${session.capacity} мест занято`}
         >
           <Users className="h-2.5 w-2.5" /> {booked}/{session.capacity}
-        </span>
+        </span> : null}
       </div>
       {!compact && (isClosed || isCancelled) && session.booking_closed_reason ? (
         <div className={cn("mt-1 line-clamp-1 pl-1 text-[9px]", isCancelled ? "text-red-700" : "text-slate-600")}>
