@@ -94,7 +94,7 @@ const AdminCheckIn = () => {
 
   const deleteBookingMutation = useMutation({
     mutationFn: async (bookingId: string) => {
-      const { error } = await supabase.from("bookings").delete().eq("id", bookingId);
+      const { error } = await supabase.from("bookings").update({ status: "cancelled" }).eq("id", bookingId);
       if (error) throw error;
     },
     onSuccess: () => {

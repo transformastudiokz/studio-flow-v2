@@ -19,6 +19,7 @@ import { ru } from "date-fns/locale";
 import { Loader2, User, Check, Clock, ChevronLeft, ChevronRight, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { occupiesPlace } from "@/lib/schedule";
 import {
   Dialog,
   DialogContent,
@@ -79,7 +80,7 @@ const ClientSchedule = () => {
             class_type:class_types(name, color, description),
             coach:coaches(name),
             my_booking:bookings(id, user_id, subscription_id, status),
-            all_bookings:bookings(count)
+            all_bookings:bookings(id, user_id, status)
         `)
         .gte('start_time', start)
         .lte('start_time', end)
@@ -88,8 +89,10 @@ const ClientSchedule = () => {
       if (error) throw error;
 
       return data.map((item: any) => {
-          const totalBooked = item.all_bookings?.[0]?.count || 0;
-          const myBooking = item.my_booking?.find((b: any) => b.user_id === user?.id);
+          const totalBooked = (item.all_bookings || []).filter((booking: any) => occupiesPlace(booking.status)).length;
+          const myBooking = item.my_booking?.find((booking: any) =>
+            booking.user_id === user?.id && occupiesPlace(booking.status),
+          );
 
           return {
             ...item,
@@ -112,13 +115,13 @@ const ClientSchedule = () => {
 
       const { data: sessionData, error: sErr } = await supabase
         .from('schedule_sessions')
-        .select('capacity, booking_status, booking_closed_reason, bookings(count)')
+        .select('capacity, booking_status, booking_closed_reason, bookings(id,status)')
         .eq('id', sessionId)
         .single();
       
       if(sErr) throw sErr;
       if (sessionData.booking_status !== 'open') throw new Error(sessionData.booking_status === 'cancelled' ? "Занятие отменено" : "Запись на занятие закрыта");
-      const currentCount = sessionData.bookings?.[0]?.count || 0;
+      const currentCount = (sessionData.bookings || []).filter((booking: any) => occupiesPlace(booking.status)).length;
       if (currentCount >= sessionData.capacity) throw new Error("К сожалению, места только что закончились");
 
       const todayStr = new Date().toISOString().split('T')[0];
@@ -170,8 +173,8 @@ const ClientSchedule = () => {
             return { isLate: true };
         }
 
-        const { error: delError } = await supabase.from('bookings').delete().eq('id', bookingId);
-        if (delError) throw delError;
+        const { error: cancelError } = await supabase.from('bookings').update({ status: 'cancelled' }).eq('id', bookingId);
+        if (cancelError) throw cancelError;
         return { isLate: false };
     },
     onSuccess: (result: any) => {

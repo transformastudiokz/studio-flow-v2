@@ -46,7 +46,7 @@ const attendanceStatus = {
   late_cancel: { label: "Поздняя отмена", className: "border-red-300 bg-red-100 text-red-800" },
 } as const;
 
-const occupiesPlace = (status: string) => !["cancelled", "late_cancel"].includes(status);
+const occupiesPlace = (status: string) => !["cancelled", "late_cancel", "absent"].includes(status);
 
 export const UpcomingClasses = () => {
   const queryClient = useQueryClient();

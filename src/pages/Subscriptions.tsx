@@ -118,7 +118,7 @@ const Subscriptions = () => {
     onSuccess: () => {
       toast.success("Абонемент выдан");
       setIsSellDialogOpen(false);
-      setSellForm({ user_id: "", plan_id: "" });
+      setSellForm({ user_id: "", plan_id: "", activation_date: format(new Date(), 'yyyy-MM-dd') });
       queryClient.invalidateQueries({ queryKey: ['user_subscriptions_full'] });
     },
     onError: (err: any) => toast.error("Ошибка: " + err.message)

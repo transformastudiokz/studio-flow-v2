@@ -106,7 +106,8 @@ export const fetchClientStatuses = async (userIds: string[]) => {
       .from("bookings")
       .select("id, user_id, created_at")
       .in("user_id", uniqueUserIds)
-      .order("created_at", { ascending: true }),
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true }),
   ]);
 
   if (subscriptionsResult.error) throw subscriptionsResult.error;
