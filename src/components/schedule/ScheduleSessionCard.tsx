@@ -64,14 +64,15 @@ export function ScheduleSessionCard({ session, compact = false, hasConflict = fa
       </div>
       {!compact ? (
         <>
-          <div className={cn("mt-1 pl-1 text-muted-foreground", weekCard ? "line-clamp-2 text-[10px] leading-tight" : "truncate text-[10px]")}>
-            {session.coach?.name || "Без тренера"}{weekCard ? ` • ${room}` : null}
+          <div className={cn("mt-1 pl-1 text-muted-foreground", weekCard ? "truncate text-[10px] leading-tight" : "truncate text-[10px]")} title={session.coach?.name || "Без тренера"}>
+            {session.coach?.name || "Без тренера"}
           </div>
           {!weekCard ? <div className="truncate pl-1 text-[10px] text-muted-foreground">{room}</div> : null}
         </>
       ) : null}
       <div className="mt-auto flex items-center justify-between gap-1 pl-1 pt-1">
         <span className="flex min-w-0 items-center gap-1">
+          {weekCard ? <span className="shrink-0 rounded bg-slate-100 px-1 py-0.5 text-[9px] font-medium text-slate-700">{room}</span> : null}
           {(session.firstBookingCount || 0) > 0 ? (
             <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-50 px-1 py-0.5 text-[9px] font-semibold text-amber-700" title={`Впервые записаны: ${session.firstBookingCount}`}>
               <Star className="h-2.5 w-2.5 fill-amber-400 text-amber-500" /> {session.firstBookingCount}
