@@ -20,29 +20,33 @@ const membershipConfig = {
 export const ClientStatusIndicators = ({
   status,
   className,
+  reserveSpace = false,
 }: {
   status?: ClientStatus | null;
   className?: string;
+  reserveSpace?: boolean;
 }) => {
-  if (!status) return null;
+  if (!status && !reserveSpace) return null;
 
-  const membership = membershipConfig[status.membership];
+  const membership = status ? membershipConfig[status.membership] : null;
 
   return (
-    <span className={cn("inline-flex shrink-0 items-center gap-1.5", className)}>
-      {status.isFirstVisit && (
+    <span className={cn("inline-flex shrink-0 items-center gap-1.5", reserveSpace && "w-10", className)}>
+      {status?.isFirstVisit ? (
       <Star
           className="h-4 w-4 fill-amber-400 text-amber-500"
           aria-label="Первая запись клиента"
         >
           <title>Первая запись клиента</title>
         </Star>
-      )}
-      <span
-        className={cn("h-2.5 w-2.5 rounded-full ring-2 ring-white", membership.className)}
-        aria-label={membership.label}
-        title={membership.label}
-      />
+      ) : reserveSpace ? <span className="h-4 w-4" aria-hidden="true" /> : null}
+      {membership ? (
+        <span
+          className={cn("h-2.5 w-2.5 rounded-full ring-2 ring-white", membership.className)}
+          aria-label={membership.label}
+          title={membership.label}
+        />
+      ) : reserveSpace ? <span className="h-2.5 w-2.5" aria-hidden="true" /> : null}
     </span>
   );
 };

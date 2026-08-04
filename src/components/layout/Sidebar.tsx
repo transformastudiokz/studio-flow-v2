@@ -18,6 +18,8 @@ import {
   DollarSign,
   ScrollText,
   UserRoundPlus
+  ,WalletCards
+  ,UsersRound
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
@@ -43,6 +45,7 @@ export const Sidebar = () => {
     { name: "Расписание", href: "/schedule", icon: Calendar },
     { name: "Виды занятий", href: "/class-types", icon: Dumbbell },
     { name: "Абонементы", href: "/subscriptions", icon: CreditCard },
+    { name: "Касса", href: "/cash", icon: WalletCards },
     { name: "Виды абонементов", href: "/admin/plans", icon: Tags },
     { name: "Посещаемость", href: "/attendance", icon: ClipboardCheck },
     { name: "Инструкторы", href: "/instructors", icon: UserCog },
@@ -52,6 +55,7 @@ export const Sidebar = () => {
     { name: "Агрегаторы", href: "/aggregators", icon: Globe },
     { name: "Все пользователи", href: "/admin/users", icon: ShieldCheck },
     ...(currentUserRole === 'owner' ? [
+      { name: "Сотрудники", href: "/staff", icon: UsersRound },
       { name: "Расчёт зарплаты", href: "/owner/payroll", icon: DollarSign },
       { name: "Журнал событий", href: "/owner/logs", icon: ScrollText },
     ] : []),

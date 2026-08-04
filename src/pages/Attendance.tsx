@@ -491,8 +491,9 @@ const Attendance = () => {
                                                                 </Button>
                                                             )}
 
+                                                            <ClientStatusIndicators status={booking.clientStatus} reserveSpace />
                                                             <div>
-                                                                <div className="flex items-center gap-2">
+                                                                <div className="flex items-center">
                                                                     {client ? (
                                                                         <Link className="font-medium hover:text-primary hover:underline" to={`/clients/${client.id}`}>
                                                                             {client.first_name} {client.last_name || ''}
@@ -500,7 +501,6 @@ const Attendance = () => {
                                                                     ) : (
                                                                         <span className="font-medium">Неизвестный</span>
                                                                     )}
-                                                                    <ClientStatusIndicators status={booking.clientStatus} />
                                                                 </div>
                                                                 <div className="text-xs text-gray-400">{client?.phone}</div>
                                                             </div>
@@ -604,6 +604,7 @@ const Attendance = () => {
                                       <div key={booking.id} className={`p-3 rounded-lg border ${bgClass} flex flex-col gap-2`}>
                                           <div className="flex justify-between items-center">
                                               <div className="flex min-w-0 items-center gap-2">
+                                                <ClientStatusIndicators status={booking.clientStatus} reserveSpace />
                                                 {client ? (
                                                   <Link className="truncate text-sm font-semibold hover:text-primary hover:underline" to={`/clients/${client.id}`}>
                                                     {client.first_name} {client.last_name || ''}
@@ -611,7 +612,6 @@ const Attendance = () => {
                                                 ) : (
                                                   <div className="truncate text-sm font-semibold">Неизвестный</div>
                                                 )}
-                                                <ClientStatusIndicators status={booking.clientStatus} />
                                               </div>
                                               {/* Кнопка WhatsApp (КРУПНАЯ для пальца) */}
                                               {client?.phone && (

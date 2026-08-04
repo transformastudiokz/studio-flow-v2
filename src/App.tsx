@@ -33,6 +33,9 @@ import SubscriptionPlans from "./pages/SubscriptionPlans";
 import ClassTypes from "./pages/ClassTypes";
 import Aggregators from "./pages/Aggregators";
 import News from "./pages/News";
+import Cash from "./pages/Cash";
+import Staff from "./pages/Staff";
+import ChangePassword from "./pages/ChangePassword";
 import NotFound from "./pages/NotFound";
 
 import AllUsers from "./pages/admin/AllUsers";
@@ -60,6 +63,7 @@ const queryClient = new QueryClient();
 export const ProtectedRoute = ({ children, checkAdmin = false }: { children?: React.ReactNode, checkAdmin?: boolean }) => {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  const [mustChangePassword, setMustChangePassword] = useState(false);
   const activeUserIdRef = useRef<string | null>(null);
   const roleCheckRef = useRef<{ userId: string; promise: Promise<void> } | null>(null);
 
@@ -72,7 +76,7 @@ export const ProtectedRoute = ({ children, checkAdmin = false }: { children?: Re
       try {
         const { data, error } = await supabase
           .from('profiles')
-          .select('role')
+          .select('role, must_change_password, is_active')
           .eq('id', userId)
           .maybeSingle();
 
@@ -84,7 +88,8 @@ export const ProtectedRoute = ({ children, checkAdmin = false }: { children?: Re
           return;
         }
 
-        setIsAdmin(['admin', 'owner'].includes(data?.role));
+        setMustChangePassword(Boolean(data?.must_change_password));
+        setIsAdmin(['admin', 'owner'].includes(data?.role) && data?.is_active !== false);
       } catch (err) {
         console.error("Критическая ошибка:", err);
         if (activeUserIdRef.current === userId && mode === "blocking") {
@@ -166,6 +171,8 @@ export const ProtectedRoute = ({ children, checkAdmin = false }: { children?: Re
     return <Navigate to={checkAdmin ? "/login" : "/portal/login"} replace />;
   }
 
+  if (checkAdmin && mustChangePassword) return <Navigate to="/change-password" replace />;
+
   // 3. Есть сессия, но нет прав администратора
   if (checkAdmin && !isAdmin) {
     return (
@@ -186,13 +193,14 @@ export const ProtectedRoute = ({ children, checkAdmin = false }: { children?: Re
 const TrainerRoute = ({ children }: { children?: React.ReactNode }) => {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
   const [isTrainer, setIsTrainer] = useState<boolean | null>(null);
+  const [mustChangePassword, setMustChangePassword] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       if (session?.user) {
-        supabase.from('profiles').select('role').eq('id', session.user.id).maybeSingle()
-          .then(({ data }) => setIsTrainer(data?.role === 'trainer'));
+        supabase.from('profiles').select('role,must_change_password,is_active').eq('id', session.user.id).maybeSingle()
+          .then(({ data }) => { setIsTrainer(data?.role === 'trainer' && data?.is_active !== false); setMustChangePassword(Boolean(data?.must_change_password)); });
       } else {
         setIsTrainer(false);
       }
@@ -200,8 +208,8 @@ const TrainerRoute = ({ children }: { children?: React.ReactNode }) => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       if (session?.user) {
-        supabase.from('profiles').select('role').eq('id', session.user.id).maybeSingle()
-          .then(({ data }) => setIsTrainer(data?.role === 'trainer'));
+        supabase.from('profiles').select('role,must_change_password,is_active').eq('id', session.user.id).maybeSingle()
+          .then(({ data }) => { setIsTrainer(data?.role === 'trainer' && data?.is_active !== false); setMustChangePassword(Boolean(data?.must_change_password)); });
       } else {
         setIsTrainer(false);
       }
@@ -213,6 +221,7 @@ const TrainerRoute = ({ children }: { children?: React.ReactNode }) => {
     return <div className="h-screen flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   }
   if (session === null) return <Navigate to="/trainer/login" replace />;
+  if (mustChangePassword) return <Navigate to="/change-password" replace />;
   if (!isTrainer) return <Navigate to="/trainer/login" replace />;
   return children ? <>{children}</> : <Outlet />;
 };
@@ -228,6 +237,7 @@ const App = () => (
           {/* Публичные маршруты */}
           <Route path="/login" element={<Login />} />
           <Route path="/portal/login" element={<ClientLogin />} />
+          <Route path="/change-password" element={<ChangePassword />} />
 
           {/* === АДМИНКА === */}
           <Route element={<ProtectedRoute checkAdmin><AdminLayout /></ProtectedRoute>}>
@@ -237,6 +247,8 @@ const App = () => (
             <Route path="/clients/:id" element={<ClientDetail />} />
             <Route path="/schedule" element={<Schedule />} />
             <Route path="/subscriptions" element={<Subscriptions />} />
+            <Route path="/cash" element={<Cash />} />
+            <Route path="/staff" element={<Staff />} />
             <Route path="/attendance" element={<Attendance />} />
             <Route path="/instructors" element={<Instructors />} />
             <Route path="/trials" element={<Trials />} />

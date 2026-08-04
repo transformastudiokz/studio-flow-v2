@@ -75,7 +75,7 @@ const ClientSchedule = () => {
       const { data, error } = await supabase
         .from('schedule_sessions')
         .select(`
-            id, start_time, end_time, capacity,
+            id, start_time, end_time, capacity, booking_status, booking_closed_reason,
             class_type:class_types(name, color, description),
             coach:coaches(name),
             my_booking:bookings(id, user_id, subscription_id, status),
@@ -112,11 +112,12 @@ const ClientSchedule = () => {
 
       const { data: sessionData, error: sErr } = await supabase
         .from('schedule_sessions')
-        .select('capacity, bookings(count)')
+        .select('capacity, booking_status, booking_closed_reason, bookings(count)')
         .eq('id', sessionId)
         .single();
       
       if(sErr) throw sErr;
+      if (sessionData.booking_status !== 'open') throw new Error(sessionData.booking_status === 'cancelled' ? "Занятие отменено" : "Запись на занятие закрыта");
       const currentCount = sessionData.bookings?.[0]?.count || 0;
       if (currentCount >= sessionData.capacity) throw new Error("К сожалению, места только что закончились");
 
@@ -267,7 +268,7 @@ const ClientSchedule = () => {
               return (
                 <Card 
                     key={session.id} 
-                    className="overflow-hidden border-0 shadow-sm ring-1 ring-gray-100 rounded-xl hover:shadow-md transition-shadow cursor-pointer active:scale-[0.99]"
+                    className={cn("overflow-hidden border-0 shadow-sm ring-1 rounded-xl hover:shadow-md transition-shadow cursor-pointer active:scale-[0.99]", session.booking_status === 'cancelled' ? "bg-slate-200 ring-slate-300 text-slate-600" : session.booking_status === 'closed' ? "bg-slate-50 ring-slate-200" : "ring-gray-100")}
                     onClick={() => setSelectedClassInfo(session.class_type)} // ОТКРЫВАЕМ ИНФО
                 >
                   <div className="flex h-full">
@@ -297,6 +298,7 @@ const ClientSchedule = () => {
                             </div>
 
                             <h3 className="font-bold text-sm leading-tight truncate">{session.class_type?.name}</h3>
+                            {session.booking_status !== 'open' && <p className="mt-1 text-[10px] font-semibold text-slate-600">{session.booking_status === 'cancelled' ? "Занятие отменено" : "Запись закрыта"}{session.booking_closed_reason ? ` · ${session.booking_closed_reason}` : ""}</p>}
                             <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5 truncate">
                                 <User className="w-3 h-3" /> {session.coach?.name || "Тренер"}
                             </p>
@@ -328,6 +330,8 @@ const ClientSchedule = () => {
                                     )}
                                 </Button>
                                 )
+                            ) : session.booking_status !== 'open' ? (
+                                <Button disabled variant="secondary" className="h-8 text-xs bg-slate-200 text-slate-600 px-3">{session.booking_status === 'cancelled' ? "Отменено" : "Запись закрыта"}</Button>
                             ) : isFull ? (
                                 <Button disabled variant="secondary" className="h-8 text-xs bg-gray-100 text-gray-400 px-3">
                                 Заполнено

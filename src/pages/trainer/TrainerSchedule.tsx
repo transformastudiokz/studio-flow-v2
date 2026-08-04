@@ -21,17 +21,9 @@ const TrainerSchedule = () => {
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return [];
-      const { data: coach } = await supabase.from('coaches').select('id').eq('user_id', user.id).single();
-      if (!coach) return [];
-
-      const { data: sessions } = await supabase
-        .from('schedule_sessions')
-        .select('id, start_time, end_time, capacity, class_type:class_types(name, color), bookings(count)')
-        .eq('coach_id', coach.id)
-        .gte('start_time', weekStart.toISOString())
-        .lte('start_time', weekEnd.toISOString())
-        .order('start_time');
-      return sessions || [];
+      const { data: sessions, error } = await supabase.rpc('get_trainer_schedule', { p_from: weekStart.toISOString(), p_to: weekEnd.toISOString() });
+      if (error) throw error;
+      return (sessions || []).map((session: any) => ({ ...session, class_type: { name: session.class_name, color: session.class_color }, bookings: [{ count: session.booked_count }] }));
     }
   });
 

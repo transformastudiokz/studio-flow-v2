@@ -4,13 +4,12 @@ import { supabase } from "@/lib/supabase";
 import { differenceInMinutes, endOfDay, format, parseISO, startOfDay } from "date-fns";
 import { Clock, Loader2, MapPin, MessageCircle, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ClientStatusIndicators, ClientStatusLegend } from "@/components/clients/ClientStatusIndicators";
 import { fetchClientStatuses, getClientStatusForBooking, type ClientStatus } from "@/lib/client-status";
 import { toast } from "sonner";
-import { useIsMobile } from "@/hooks/use-mobile";
 
 type DashboardClient = {
   id: string;
@@ -32,6 +31,8 @@ type DashboardClass = {
   end_time: string;
   capacity: number;
   room: string | null;
+  booking_status: "open" | "closed" | "cancelled";
+  booking_closed_reason: string | null;
   class_type: { name: string } | null;
   coach: { name: string } | null;
   bookings: DashboardBooking[];
@@ -49,7 +50,6 @@ const occupiesPlace = (status: string) => !["cancelled", "late_cancel"].includes
 
 export const UpcomingClasses = () => {
   const queryClient = useQueryClient();
-  const isMobile = useIsMobile();
 
   const { data: cancellationWindow = 90 } = useQuery({
     queryKey: ["dashboard_cancellation_window"],
@@ -70,7 +70,7 @@ export const UpcomingClasses = () => {
       const { data, error } = await supabase
         .from("schedule_sessions")
         .select(`
-          id, start_time, end_time, capacity, room,
+          id, start_time, end_time, capacity, room, booking_status, booking_closed_reason,
           class_type:class_types(name),
           coach:coaches(name),
           bookings:bookings(
@@ -178,15 +178,16 @@ export const UpcomingClasses = () => {
             const percent = Math.min((bookingsCount / item.capacity) * 100, 100);
 
             return (
-              <Popover key={item.id}>
-                <PopoverTrigger asChild>
+              <Dialog key={item.id}>
+                <DialogTrigger asChild>
                   <button
                     type="button"
-                    className="block w-full p-4 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+                    className={`block w-full p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary ${item.booking_status === "cancelled" ? "bg-slate-200 text-slate-600 hover:bg-slate-200" : item.booking_status === "closed" ? "bg-slate-50 hover:bg-slate-100" : "hover:bg-muted/40"}`}
                   >
                     <div className="mb-2 flex items-start justify-between">
                       <div>
                         <h4 className="font-medium text-foreground">{item.class_type?.name}</h4>
+                        {item.booking_status !== "open" && <p className="mt-1 text-xs font-semibold text-slate-600">{item.booking_status === "cancelled" ? "Занятие отменено" : "Запись закрыта"}{item.booking_closed_reason ? ` · ${item.booking_closed_reason}` : ""}</p>}
                         <p className="mt-1 flex items-center gap-1 text-sm text-muted-foreground">
                           <Users className="h-3 w-3" /> {item.coach?.name || "Без тренера"}
                         </p>
@@ -213,22 +214,17 @@ export const UpcomingClasses = () => {
                       </span>
                     </div>
                   </button>
-                </PopoverTrigger>
-                <PopoverContent
-                  align="start"
-                  side={isMobile ? "bottom" : "right"}
-                  sideOffset={12}
-                  collisionPadding={16}
-                  className="w-[min(560px,calc(100vw-32px))] p-0 shadow-xl"
-                >
+                </DialogTrigger>
+                <DialogContent className="w-[calc(100vw-24px)] max-w-3xl gap-0 overflow-hidden p-0 shadow-2xl sm:max-h-[min(820px,90vh)]">
                   <div className="border-b p-4">
                     <div className="flex items-start justify-between gap-4 pr-5">
                       <div>
-                        <h4 className="text-base font-semibold">{item.class_type?.name}</h4>
-                        <p className="mt-1 text-sm text-muted-foreground">
+                        <DialogTitle className="text-base font-semibold">{item.class_type?.name}</DialogTitle>
+                        <DialogDescription className="mt-1 text-sm text-muted-foreground">
                           {format(parseISO(item.start_time), "HH:mm")}–{format(parseISO(item.end_time), "HH:mm")}
                           {item.coach?.name ? ` · ${item.coach.name}` : ""}
-                        </p>
+                          {item.room ? ` · ${item.room}` : ""}
+                        </DialogDescription>
                       </div>
                       <span className="shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
                         {bookingsCount}/{item.capacity}
@@ -248,8 +244,9 @@ export const UpcomingClasses = () => {
 
                           return (
                             <div key={booking.id} className="flex min-h-14 items-center gap-3 px-4 py-2.5">
+                              <ClientStatusIndicators status={booking.clientStatus} reserveSpace />
                               <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center">
                                   {client ? (
                                     <Link
                                       to={`/clients/${client.id}`}
@@ -260,7 +257,6 @@ export const UpcomingClasses = () => {
                                   ) : (
                                     <span className="text-sm font-medium">Неизвестный клиент</span>
                                   )}
-                                  <ClientStatusIndicators status={booking.clientStatus} />
                                 </div>
                                 <p className="truncate text-xs text-muted-foreground">{client?.phone || "Телефон не указан"}</p>
                               </div>
@@ -305,8 +301,8 @@ export const UpcomingClasses = () => {
                       )}
                     </div>
                   </ScrollArea>
-                </PopoverContent>
-              </Popover>
+                </DialogContent>
+              </Dialog>
             );
           })
         )}

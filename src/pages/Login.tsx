@@ -45,19 +45,18 @@ const Login = () => {
     if (user) {
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
-          .select('role')
+          .select('role, is_active, must_change_password')
           .eq('id', user.id)
           .single();
 
-        if (profileError || !['admin', 'owner'].includes(profile?.role)) {
+        if (profileError || !['admin', 'owner', 'trainer'].includes(profile?.role) || profile?.is_active === false) {
           console.error("Ошибка прав:", profileError);
           toast.error("Доступ запрещен", { description: "У этого аккаунта нет прав администратора" });
           await supabase.auth.signOut(); // Выкидываем сразу
         } else {
-          if (['admin', 'owner'].includes(profile?.role)) {
-            toast.success("Добро пожаловать!");
-            navigate("/dashboard");
-          }
+          toast.success("Добро пожаловать!");
+          if (profile.must_change_password) navigate("/change-password");
+          else navigate(profile.role === 'trainer' ? "/trainer/schedule" : "/dashboard");
         }
     }
     setLoading(false);
@@ -75,7 +74,7 @@ const Login = () => {
             <div className="space-y-2">
               <Input
                 type="text" 
-                placeholder="Логин / Телефон"
+              placeholder="Email или телефон"
                 value={login}
                 onChange={(e) => setLogin(e.target.value)}
                 className="bg-gray-900 border-gray-700 text-white h-12"

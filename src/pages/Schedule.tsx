@@ -22,6 +22,7 @@ import {
   User,
   Clock,
   Users
+  ,LockKeyhole
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -39,6 +40,8 @@ export default function Schedule() {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSession, setEditingSession] = useState<any>(null);
+  const [bookingAction, setBookingAction] = useState<"open" | "closed" | "cancelled">("open");
+  const [bookingReason, setBookingReason] = useState("");
   const [formData, setFormData] = useState({
     classTypeId: "",
     coachId: "",
@@ -125,6 +128,24 @@ export default function Schedule() {
     onError: (err: any) => toast.error(err.message)
   });
 
+  const bookingStatusMutation = useMutation({
+    mutationFn: async () => {
+      if (!editingSession) return;
+      if (bookingAction !== "open" && !bookingReason.trim()) throw new Error("Укажи причину");
+      const { data: { user } } = await supabase.auth.getUser();
+      const { error } = await supabase.from("schedule_sessions").update({
+        booking_status: bookingAction,
+        is_cancelled: bookingAction === "cancelled",
+        booking_closed_reason: bookingAction === "open" ? null : bookingReason.trim(),
+        booking_closed_at: bookingAction === "open" ? null : new Date().toISOString(),
+        booking_closed_by: bookingAction === "open" ? null : user?.id,
+      }).eq("id", editingSession.id);
+      if (error) throw error;
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["sessions"] }); queryClient.invalidateQueries({ queryKey: ["dashboard_upcoming_classes"] }); setIsModalOpen(false); toast.success(bookingAction === "open" ? "Запись открыта" : bookingAction === "closed" ? "Запись закрыта" : "Занятие отменено"); },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
   const duplicateWeekMutation = useMutation({
     mutationFn: async () => {
       if (!sessions || sessions.length === 0) throw new Error("На этой неделе нет занятий");
@@ -157,6 +178,8 @@ export default function Schedule() {
       time: format(parseISO(session.start_time), 'HH:mm'),
       capacity: session.capacity?.toString() || "10"
     });
+    setBookingAction(session.booking_status || (session.is_cancelled ? "cancelled" : "open"));
+    setBookingReason(session.booking_closed_reason || "");
     setIsModalOpen(true);
   };
 
@@ -172,7 +195,7 @@ export default function Schedule() {
     const isFull = bookedCount >= session.capacity;
     return (
       <div
-        className="group relative bg-white rounded-lg border border-gray-100 shadow-sm hover:shadow-md transition-all cursor-pointer overflow-hidden"
+        className={cn("group relative rounded-lg border shadow-sm hover:shadow-md transition-all cursor-pointer overflow-hidden", session.booking_status === "cancelled" ? "border-slate-400 bg-slate-200 text-slate-600" : session.booking_status === "closed" ? "border-slate-300 bg-slate-100" : "border-gray-100 bg-white")}
         onClick={() => openEditModal(session)}
       >
         <div className="w-full h-1" style={{ backgroundColor: session.class_type?.color || '#3b82f6' }} />
@@ -191,6 +214,8 @@ export default function Schedule() {
             </div>
           </div>
           <div className="font-semibold text-sm truncate mb-1.5">{session.class_type?.name}</div>
+          {session.booking_status !== "open" && <div className="mb-1.5 flex items-center gap-1 text-[10px] font-semibold text-slate-600"><LockKeyhole className="h-3 w-3" />{session.booking_status === "cancelled" ? "Отменено" : "Запись закрыта"}</div>}
+          {session.booking_closed_reason && <div className="mb-1.5 truncate text-[10px] text-muted-foreground" title={session.booking_closed_reason}>{session.booking_closed_reason}</div>}
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span className="flex items-center gap-1 truncate">
               <User className="w-3 h-3 shrink-0" />
@@ -358,6 +383,12 @@ export default function Schedule() {
                 </SelectContent>
               </Select>
             </div>
+            {editingSession && <div className="grid gap-2 rounded-xl border bg-slate-50 p-3">
+              <Label>Доступность записи</Label>
+              <Select value={bookingAction} onValueChange={(value: "open" | "closed" | "cancelled") => setBookingAction(value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="open">Запись открыта</SelectItem><SelectItem value="closed">Закрыть новые записи</SelectItem><SelectItem value="cancelled">Занятие отменено</SelectItem></SelectContent></Select>
+              {bookingAction !== "open" && <><Label>Причина</Label><Input value={bookingReason} onChange={e => setBookingReason(e.target.value)} placeholder="Например: нет тренера" /></>}
+              <Button type="button" variant="outline" onClick={() => bookingStatusMutation.mutate()} disabled={bookingStatusMutation.isPending}>{bookingAction === "open" ? "Открыть запись" : bookingAction === "closed" ? "Закрыть запись" : "Отменить занятие"}</Button>
+            </div>}
             <div className="grid gap-2">
               <Label>Тренер</Label>
               <Select value={formData.coachId} onValueChange={val => setFormData({...formData, coachId: val})}>
