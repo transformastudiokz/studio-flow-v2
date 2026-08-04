@@ -2,6 +2,7 @@ import { format, parseISO } from "date-fns";
 import { AlertTriangle, CircleSlash2, LockKeyhole, Star, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
+  formatCoachShortName,
   normalizeRoom,
   sessionBookingCount,
   type ScheduleSession,
@@ -65,7 +66,7 @@ export function ScheduleSessionCard({ session, compact = false, hasConflict = fa
       {!compact ? (
         <>
           <div className={cn("mt-1 pl-1 text-muted-foreground", weekCard ? "truncate text-[10px] leading-tight" : "truncate text-[10px]")} title={session.coach?.name || "Без тренера"}>
-            {session.coach?.name || "Без тренера"}
+            {weekCard ? formatCoachShortName(session.coach?.name) : session.coach?.name || "Без тренера"}
           </div>
           {!weekCard ? <div className="truncate pl-1 text-[10px] text-muted-foreground">{room}</div> : null}
         </>

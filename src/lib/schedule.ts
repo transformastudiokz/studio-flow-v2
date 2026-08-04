@@ -47,6 +47,12 @@ export type ScheduleSession = {
 export const normalizeRoom = (room?: string | null): StudioRoom =>
   room === "Малый зал" ? "Малый зал" : "Большой зал";
 
+export const formatCoachShortName = (name?: string | null) => {
+  const parts = (name || "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return parts[0] || "Без тренера";
+  return `${parts[1]} ${parts[0].slice(0, 1).toLocaleUpperCase("ru-RU")}.`;
+};
+
 export const occupiesPlace = (status: string) =>
   !["cancelled", "late_cancel", "absent"].includes(status);
 

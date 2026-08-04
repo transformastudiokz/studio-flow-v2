@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  formatCoachShortName,
   normalizePhone,
   normalizeRoom,
   occupiesPlace,
@@ -43,6 +44,12 @@ describe("schedule business rules", () => {
     expect(normalizeRoom("Малый зал")).toBe("Малый зал");
     expect(normalizePhone("8 (707) 123-45-67")).toBe("77071234567");
     expect(normalizePhone("7071234567")).toBe("77071234567");
+  });
+
+  it("shows the coach name with the surname initial in compact cards", () => {
+    expect(formatCoachShortName("Нурханова Тумар Максатовна")).toBe("Тумар Н.");
+    expect(formatCoachShortName("Ажар")).toBe("Ажар");
+    expect(formatCoachShortName(null)).toBe("Без тренера");
   });
 
   it("moves the second overlapping session to the small room", () => {
