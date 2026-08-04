@@ -47,8 +47,12 @@ const WEEK_CELL_PADDING = 6;
 const byStartRoomAndStatus = (left: ScheduleSession, right: ScheduleSession) => {
   const timeDifference = parseISO(left.start_time).getTime() - parseISO(right.start_time).getTime();
   if (timeDifference !== 0) return timeDifference;
-  if (left.booking_status !== right.booking_status) return left.booking_status === "cancelled" ? 1 : -1;
-  return STUDIO_ROOMS.indexOf(normalizeRoom(left.room)) - STUDIO_ROOMS.indexOf(normalizeRoom(right.room));
+  const roomDifference = STUDIO_ROOMS.indexOf(normalizeRoom(left.room)) - STUDIO_ROOMS.indexOf(normalizeRoom(right.room));
+  if (roomDifference !== 0) return roomDifference;
+  if (left.booking_status === right.booking_status) return left.id.localeCompare(right.id);
+  if (left.booking_status === "cancelled") return 1;
+  if (right.booking_status === "cancelled") return -1;
+  return left.booking_status.localeCompare(right.booking_status);
 };
 
 const buildColumns = ({ view, weekDays, selectedDay, sessions, coaches }: Omit<Props, "onOpenSession">): Column[] => {
@@ -97,9 +101,31 @@ const buildColumns = ({ view, weekDays, selectedDay, sessions, coaches }: Omit<P
   return columns;
 };
 
-const sessionsForHour = (sessions: ScheduleSession[], hour: number) => sessions
-  .filter((session) => parseISO(session.start_time).getHours() === hour)
-  .sort(byStartRoomAndStatus);
+const sessionsByDisplayHour = (sessions: ScheduleSession[]) => {
+  const buckets = new Map<number, ScheduleSession[]>();
+  let activeGroup: ScheduleSession[] = [];
+  let groupEnd = 0;
+
+  const flushGroup = () => {
+    if (activeGroup.length === 0) return;
+    const hour = parseISO(activeGroup[0].start_time).getHours();
+    buckets.set(hour, [...(buckets.get(hour) || []), ...activeGroup].sort(byStartRoomAndStatus));
+  };
+
+  [...sessions].sort(byStartRoomAndStatus).forEach((session) => {
+    const start = parseISO(session.start_time).getTime();
+    const end = parseISO(session.end_time).getTime();
+    if (activeGroup.length > 0 && start >= groupEnd) {
+      flushGroup();
+      activeGroup = [];
+      groupEnd = 0;
+    }
+    activeGroup.push(session);
+    groupEnd = Math.max(groupEnd, end);
+  });
+  flushGroup();
+  return buckets;
+};
 
 function WeekGrid({ columns, now, allSessions, onOpenSession }: {
   columns: Column[];
@@ -107,15 +133,16 @@ function WeekGrid({ columns, now, allSessions, onOpenSession }: {
   allSessions: ScheduleSession[];
   onOpenSession: Props["onOpenSession"];
 }) {
+  const columnBuckets = useMemo(() => columns.map((column) => sessionsByDisplayHour(column.sessions)), [columns]);
   const hourlyRows = useMemo(() => hours.map((hour) => {
-    const cells = columns.map((column) => sessionsForHour(column.sessions, hour));
+    const cells = columnBuckets.map((buckets) => buckets.get(hour) || []);
     const maximumSessions = Math.max(1, ...cells.map((cell) => cell.length));
     return {
       hour,
       cells,
       height: Math.max(HOUR_HEIGHT, maximumSessions * WEEK_CARD_HEIGHT + Math.max(0, maximumSessions - 1) * WEEK_CARD_GAP + WEEK_CELL_PADDING * 2),
     };
-  }), [columns]);
+  }), [columnBuckets]);
 
   return (
     <div className="hidden overflow-x-auto rounded-xl border bg-white shadow-sm lg:block">
@@ -209,7 +236,7 @@ export function ScheduleGrid(props: Props) {
         ))}
       </div>
 
-      {props.view === "week" ? (
+      {props.view === "week" || props.view === "day" ? (
         <WeekGrid columns={columns} now={now} allSessions={allSessions} onOpenSession={props.onOpenSession} />
       ) : (
         <div className="hidden overflow-x-auto rounded-xl border bg-white shadow-sm lg:block">

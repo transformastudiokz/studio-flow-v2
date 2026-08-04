@@ -94,7 +94,7 @@ export function ScheduleSessionCard({ session, compact = false, hasConflict = fa
           <Users className="h-2.5 w-2.5" /> {booked}/{session.capacity}
         </span> : null}
       </div>
-      {!compact && (isClosed || isCancelled) && session.booking_closed_reason ? (
+      {!compact && !weekCard && (isClosed || isCancelled) && session.booking_closed_reason ? (
         <div className={cn("mt-1 line-clamp-1 pl-1 text-[9px]", isCancelled ? "text-red-700" : "text-slate-600")}>
           {session.booking_closed_reason}
         </div>
