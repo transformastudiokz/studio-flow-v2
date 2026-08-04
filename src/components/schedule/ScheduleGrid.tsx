@@ -40,7 +40,7 @@ const hours = Array.from(
 
 const gridHeight = (SCHEDULE_END_HOUR - SCHEDULE_START_HOUR) * HOUR_HEIGHT;
 const WEEK_COLUMN_MIN_WIDTH = 132;
-const WEEK_CARD_HEIGHT = 92;
+const WEEK_CARD_HEIGHT = 108;
 const WEEK_CARD_GAP = 6;
 const WEEK_CELL_PADDING = 6;
 
