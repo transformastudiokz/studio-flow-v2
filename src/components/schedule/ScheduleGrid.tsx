@@ -120,7 +120,7 @@ export function ScheduleGrid(props: Props) {
               <div className="space-y-2 p-3">
                 {roomSessions.length === 0 ? <p className="py-5 text-center text-sm text-muted-foreground">Занятий нет</p> : roomSessions.map((session) => (
                   <div key={session.id} className="min-h-[86px]">
-                    <ScheduleSessionCard session={session} hasConflict={Boolean(sessionConflict(session, allSessions))} onOpen={props.onOpenSession} />
+                    <ScheduleSessionCard session={session} hasConflict={parseISO(session.end_time) > now && Boolean(sessionConflict(session, allSessions))} onOpen={props.onOpenSession} />
                   </div>
                 ))}
               </div>
@@ -175,7 +175,7 @@ export function ScheduleGrid(props: Props) {
                 const laneStyle = column.roomLanes
                   ? { left: room === "Большой зал" ? 3 : "50.5%", width: "49%" }
                   : { left: 4, right: 4 };
-                const conflict = Boolean(sessionConflict(session, allSessions));
+                const conflict = parseISO(session.end_time) > now && Boolean(sessionConflict(session, allSessions));
 
                 return (
                   <div
