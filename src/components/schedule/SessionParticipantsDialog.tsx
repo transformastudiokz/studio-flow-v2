@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { format, parseISO } from "date-fns";
-import { AlertCircle, Loader2, MessageCircle, Plus, Search, Settings2, UserPlus } from "lucide-react";
+import { addDays, format, parseISO } from "date-fns";
+import { ru } from "date-fns/locale";
+import { AlertCircle, CalendarSync, Loader2, MessageCircle, MoreHorizontal, Plus, Search, Settings2, Trash2, UserPlus } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
@@ -17,6 +18,7 @@ import { ClientStatusIndicators, ClientStatusLegend } from "@/components/clients
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -32,6 +34,10 @@ const attendanceStatus = {
 
 type ClientOption = ScheduleClient & { clientStatus?: ClientStatus };
 
+type TransferSession = Pick<ScheduleSession, "id" | "start_time" | "end_time" | "capacity" | "room" | "booking_status" | "class_type" | "coach"> & {
+  bookings: Array<{ status: string }>;
+};
+
 type Props = {
   session: ScheduleSession | null;
   open: boolean;
@@ -45,6 +51,9 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
   const [showCreate, setShowCreate] = useState(false);
   const [search, setSearch] = useState("");
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+  const [transferBooking, setTransferBooking] = useState<ScheduleSession["bookings"][number] | null>(null);
+  const [targetSessionId, setTargetSessionId] = useState("");
+  const [deleteBooking, setDeleteBooking] = useState<ScheduleSession["bookings"][number] | null>(null);
   const [clientForm, setClientForm] = useState({ firstName: "", lastName: "", phone: "", email: "" });
   const clientFormDirty = showCreate && Object.values(clientForm).some((value) => value.trim().length > 0);
 
@@ -54,6 +63,9 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
       setShowCreate(false);
       setSearch("");
       setSelectedClientId(null);
+      setTransferBooking(null);
+      setTargetSessionId("");
+      setDeleteBooking(null);
       setClientForm({ firstName: "", lastName: "", phone: "", email: "" });
     }
   }, [open]);
@@ -110,6 +122,31 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
     },
   });
 
+  const { data: transferSessions = [], isLoading: transferSessionsLoading } = useQuery<TransferSession[]>({
+    queryKey: ["schedule_transfer_sessions", session?.id],
+    enabled: open && Boolean(transferBooking),
+    queryFn: async () => {
+      const rangeStart = new Date();
+      const { data, error } = await supabase
+        .from("schedule_sessions")
+        .select(`
+          id, start_time, end_time, capacity, room, booking_status,
+          class_type:class_types(id,name,color,duration_min),
+          coach:coaches(id,name),
+          bookings:bookings(status)
+        `)
+        .neq("id", session!.id)
+        .eq("booking_status", "open")
+        .eq("is_cancelled", false)
+        .gte("start_time", rangeStart.toISOString())
+        .lte("start_time", addDays(rangeStart, 60).toISOString())
+        .order("start_time")
+        .limit(250);
+      if (error) throw error;
+      return (data || []) as unknown as TransferSession[];
+    },
+  });
+
   const visibleClients = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("ru-RU");
     if (!query) return clientOptions.slice(0, 12);
@@ -135,6 +172,41 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
       if (error) throw error;
     },
     onSuccess: async () => { await refresh(); toast.success("Статус посещения сохранён"); },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const removeBooking = useMutation({
+    mutationFn: async (bookingId: string) => {
+      const { error } = await supabase.from("bookings").update({ status: "cancelled" }).eq("id", bookingId);
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      setDeleteBooking(null);
+      await refresh();
+      toast.success("Запись удалена, место освобождено");
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const moveBooking = useMutation({
+    mutationFn: async () => {
+      if (!transferBooking || !targetSessionId) throw new Error("Выбери занятие для переноса");
+      const target = transferSessions.find((candidate) => candidate.id === targetSessionId);
+      if (!target) throw new Error("Занятие не найдено");
+      const occupiedTarget = target.bookings.filter((booking) => occupiesPlace(booking.status)).length;
+      if (occupiedTarget >= target.capacity) throw new Error("На выбранном занятии уже нет свободных мест");
+      const { error } = await supabase
+        .from("bookings")
+        .update({ session_id: targetSessionId, status: "booked" })
+        .eq("id", transferBooking.id);
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      setTransferBooking(null);
+      setTargetSessionId("");
+      await refresh();
+      toast.success("Клиент перенесён на другое занятие");
+    },
     onError: (error: Error) => toast.error(error.message),
   });
 
@@ -196,6 +268,7 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
   const current = details || session;
   const occupied = (details?.bookings || session.bookings || []).filter((booking) => occupiesPlace(booking.status)).length;
   const selectedClient = clientOptions.find((client) => client.id === selectedClientId);
+  const activeParticipants = (details?.bookings || []).filter((booking) => !["cancelled", "late_cancel"].includes(booking.status));
 
   const openWhatsApp = (client: ScheduleClient | null) => {
     if (!client?.phone) return toast.error("У клиента не указан телефон");
@@ -278,11 +351,11 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
           <ScrollArea className="min-h-0 flex-1">
             {isLoading ? (
               <div className="flex justify-center p-12"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
-            ) : !details?.bookings.length ? (
+            ) : activeParticipants.length === 0 ? (
               <div className="p-12 text-center text-sm text-muted-foreground">На занятие пока никто не записан</div>
             ) : (
               <div className="divide-y">
-                {details.bookings.map((booking) => {
+                {activeParticipants.map((booking) => {
                   const client = booking.user;
                   const status = attendanceStatus[booking.status as keyof typeof attendanceStatus] || attendanceStatus.booked;
                   return (
@@ -297,6 +370,14 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
                         <SelectTrigger className={`h-9 w-[150px] shrink-0 text-xs font-semibold ${status.className}`}><SelectValue /></SelectTrigger>
                         <SelectContent><SelectItem value="booked">Записан</SelectItem><SelectItem value="completed">Пришёл</SelectItem><SelectItem value="absent">Не пришёл</SelectItem><SelectItem value="cancelled">Отмена</SelectItem><SelectItem value="late_cancel">Поздняя отмена</SelectItem></SelectContent>
                       </Select>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild><Button size="icon" variant="ghost" className="h-9 w-9 shrink-0" aria-label="Действия с записью"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => { setTransferBooking(booking); setTargetSessionId(""); }}><CalendarSync className="mr-2 h-4 w-4" />Перенести</DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem className="text-red-600" onClick={() => setDeleteBooking(booking)}><Trash2 className="mr-2 h-4 w-4" />Удалить запись</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   );
                 })}
@@ -305,6 +386,25 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
           </ScrollArea>
         </div>
       </DialogContent>
+
+      <Dialog open={Boolean(transferBooking)} onOpenChange={(nextOpen) => { if (!nextOpen) { setTransferBooking(null); setTargetSessionId(""); } }}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader><DialogTitle>Перенести запись</DialogTitle><DialogDescription>{transferBooking?.user ? `${transferBooking.user.first_name || ""} ${transferBooking.user.last_name || ""}`.trim() : "Клиент"} останется в истории, изменится только занятие.</DialogDescription></DialogHeader>
+          <div className="space-y-4">
+            {transferSessionsLoading ? <div className="flex justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div> : transferSessions.length === 0 ? <div className="rounded-lg bg-muted p-5 text-center text-sm text-muted-foreground">В ближайшие 60 дней нет доступных занятий</div> : (
+              <div className="space-y-2"><Label>Новое занятие</Label><Select value={targetSessionId} onValueChange={setTargetSessionId}><SelectTrigger><SelectValue placeholder="Выбери дату и занятие" /></SelectTrigger><SelectContent className="max-h-72">{transferSessions.map((candidate) => { const candidateOccupied = candidate.bookings.filter((booking) => occupiesPlace(booking.status)).length; const isFull = candidateOccupied >= candidate.capacity; return <SelectItem key={candidate.id} value={candidate.id} disabled={isFull}>{format(parseISO(candidate.start_time), "EEE, dd MMM · HH:mm", { locale: ru })} — {candidate.class_type?.name || "Занятие"} · {normalizeRoom(candidate.room)} · {candidateOccupied}/{candidate.capacity}{isFull ? " · мест нет" : ""}</SelectItem>; })}</SelectContent></Select></div>
+            )}
+            <Button className="w-full" onClick={() => moveBooking.mutate()} disabled={!targetSessionId || moveBooking.isPending}>{moveBooking.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CalendarSync className="mr-2 h-4 w-4" />}Перенести</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(deleteBooking)} onOpenChange={(nextOpen) => { if (!nextOpen) setDeleteBooking(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Удалить запись?</DialogTitle><DialogDescription>Клиент исчезнет из списка этого занятия, место освободится. Сам клиент и история действий сохранятся.</DialogDescription></DialogHeader>
+          <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setDeleteBooking(null)}>Отмена</Button><Button variant="destructive" onClick={() => deleteBooking && removeBooking.mutate(deleteBooking.id)} disabled={removeBooking.isPending}>{removeBooking.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}Удалить запись</Button></div>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }
