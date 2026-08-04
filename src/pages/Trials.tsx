@@ -91,7 +91,7 @@ const Trials = () => {
       }
     },
     onSuccess: () => {
-      toast.success("Лид добавлен");
+      toast.success("Клиент создан без абонемента");
       closeDialog();
       queryClient.invalidateQueries({ queryKey: ['trial_clients'] });
     },
@@ -290,7 +290,7 @@ const Trials = () => {
             <DialogFooter>
               <Button onClick={() => editingClient ? updateMutation.mutate() : createMutation.mutate()} disabled={createMutation.isPending || updateMutation.isPending}>
                 {(createMutation.isPending || updateMutation.isPending) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} 
-                {editingClient ? "Сохранить" : "Создать"}
+                {editingClient ? "Сохранить" : "Создать без абонемента"}
               </Button>
             </DialogFooter>
           </DialogContent>

@@ -327,7 +327,7 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
                   <div className="grid gap-1.5"><Label>Фамилия</Label><Input value={clientForm.lastName} onChange={(event) => setClientForm((form) => ({ ...form, lastName: event.target.value }))} /></div>
                   <div className="grid gap-1.5"><Label>Телефон *</Label><Input placeholder="+7 700 000-00-00" value={clientForm.phone} onChange={(event) => setClientForm((form) => ({ ...form, phone: event.target.value }))} /></div>
                   <div className="grid gap-1.5"><Label>Email (необязательно)</Label><Input type="email" value={clientForm.email} onChange={(event) => setClientForm((form) => ({ ...form, email: event.target.value }))} /></div>
-                  <Alert className="sm:col-span-2"><AlertCircle className="h-4 w-4" /><AlertDescription>Клиент будет создан без абонемента и сразу записан. В списке появятся звезда и красная точка.</AlertDescription></Alert>
+                  <Alert className="sm:col-span-2"><AlertCircle className="h-4 w-4" /><AlertDescription>Клиент будет создан без абонемента и сразу записан. Оплату и абонемент можно оформить позже из карточки клиента. В списке появятся звезда и красная точка.</AlertDescription></Alert>
                   <div className="flex gap-2 sm:col-span-2"><Button onClick={() => createAndBook.mutate()} disabled={createAndBook.isPending}>{createAndBook.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}Создать и записать</Button><Button variant="ghost" onClick={() => setShowCreate(false)}>Назад к поиску</Button></div>
                 </div>
               ) : (

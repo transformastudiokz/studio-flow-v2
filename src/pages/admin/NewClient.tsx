@@ -21,7 +21,7 @@ const NewClient = () => {
     last_name: "",
     phone: "",
     email: "",
-    plan_id: "",
+    plan_id: "none",
   });
 
   const [created, setCreated] = useState<{
@@ -101,7 +101,7 @@ const NewClient = () => {
       if (profileError) throw profileError;
 
       // Assign subscription if selected
-      if (form.plan_id) {
+      if (form.plan_id !== "none") {
         const plan = plans.find((p: any) => p.id === form.plan_id);
         if (plan) {
           const { error: subError } = await supabase.from("user_subscriptions").insert({
@@ -130,7 +130,7 @@ const NewClient = () => {
 
   const sendWhatsApp = () => {
     if (!created) return;
-    const planName = plans.find((p: any) => p.id === form.plan_id)?.name;
+    const planName = form.plan_id === "none" ? null : plans.find((p: any) => p.id === form.plan_id)?.name;
     const lines = [
       `Здравствуйте, ${created.name}!`,
       ``,
@@ -167,12 +167,12 @@ const NewClient = () => {
               <span className="text-muted-foreground">Пароль</span>
               <span className="font-mono font-semibold">{created.password}</span>
             </div>
-            {form.plan_id && (
+            {form.plan_id !== "none" ? (
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Абонемент</span>
                 <span className="font-semibold">{plans.find((p: any) => p.id === form.plan_id)?.name}</span>
               </div>
-            )}
+            ) : <div className="flex justify-between"><span className="text-muted-foreground">Абонемент</span><span className="font-semibold text-orange-600">Не оформлен</span></div>}
           </CardContent>
         </Card>
 
@@ -187,7 +187,7 @@ const NewClient = () => {
             className="flex-1 rounded-2xl"
             onClick={() => {
               setCreated(null);
-              setForm({ first_name: "", last_name: "", phone: "", email: "", plan_id: "" });
+              setForm({ first_name: "", last_name: "", phone: "", email: "", plan_id: "none" });
             }}
           >
             <UserPlus className="mr-2 w-4 h-4" /> Ещё клиент
@@ -208,7 +208,7 @@ const NewClient = () => {
         </Button>
         <div>
           <h1 className="text-2xl font-bold">Новый клиент</h1>
-          <p className="text-sm text-muted-foreground">Создать аккаунт и назначить абонемент</p>
+          <p className="text-sm text-muted-foreground">Создать карточку сейчас, абонемент можно оформить позже</p>
         </div>
       </div>
 
@@ -258,12 +258,13 @@ const NewClient = () => {
         </div>
 
         <div className="space-y-1.5">
-          <Label>Абонемент (необязательно)</Label>
+          <Label>Абонемент</Label>
           <Select value={form.plan_id} onValueChange={(v) => setForm({ ...form, plan_id: v })}>
             <SelectTrigger>
               <SelectValue placeholder="Выбрать абонемент" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="none">Без абонемента — оформить позже</SelectItem>
               {plans.map((p: any) => (
                 <SelectItem key={p.id} value={p.id}>
                   {p.name} — {p.price.toLocaleString()} ₸ · {p.visits_count} зан.
@@ -294,7 +295,7 @@ const NewClient = () => {
         disabled={createMutation.isPending}
       >
         {createMutation.isPending && <Loader2 className="mr-2 h-5 w-5 animate-spin" />}
-        Создать аккаунт
+        {form.plan_id === "none" ? "Создать клиента без абонемента" : "Создать клиента и оформить абонемент"}
       </Button>
     </div>
   );
