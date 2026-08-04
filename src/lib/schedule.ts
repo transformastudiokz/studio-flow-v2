@@ -53,6 +53,8 @@ export const formatCoachShortName = (name?: string | null) => {
   return `${parts[1]} ${parts[0].slice(0, 1).toLocaleUpperCase("ru-RU")}.`;
 };
 
+export const scheduleStartHour = (iso: string) => parseISO(iso).getHours();
+
 export const occupiesPlace = (status: string) =>
   !["cancelled", "late_cancel", "absent"].includes(status);
 

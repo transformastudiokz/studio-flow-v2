@@ -8,6 +8,7 @@ import {
   SCHEDULE_START_HOUR,
   STUDIO_ROOMS,
   normalizeRoom,
+  scheduleStartHour,
   sessionConflict,
   sessionPosition,
   type ScheduleSession,
@@ -40,9 +41,9 @@ const hours = Array.from(
 
 const gridHeight = (SCHEDULE_END_HOUR - SCHEDULE_START_HOUR) * HOUR_HEIGHT;
 const WEEK_COLUMN_MIN_WIDTH = 132;
-const WEEK_CARD_HEIGHT = 108;
-const WEEK_CARD_GAP = 6;
-const WEEK_CELL_PADDING = 6;
+const WEEK_CARD_HEIGHT = 72;
+const WEEK_CARD_GAP = 5;
+const WEEK_CELL_PADDING = 5;
 
 const byStartRoomAndStatus = (left: ScheduleSession, right: ScheduleSession) => {
   const timeDifference = parseISO(left.start_time).getTime() - parseISO(right.start_time).getTime();
@@ -101,29 +102,12 @@ const buildColumns = ({ view, weekDays, selectedDay, sessions, coaches }: Omit<P
   return columns;
 };
 
-const sessionsByDisplayHour = (sessions: ScheduleSession[]) => {
+const sessionsByStartHour = (sessions: ScheduleSession[]) => {
   const buckets = new Map<number, ScheduleSession[]>();
-  let activeGroup: ScheduleSession[] = [];
-  let groupEnd = 0;
-
-  const flushGroup = () => {
-    if (activeGroup.length === 0) return;
-    const hour = parseISO(activeGroup[0].start_time).getHours();
-    buckets.set(hour, [...(buckets.get(hour) || []), ...activeGroup].sort(byStartRoomAndStatus));
-  };
-
   [...sessions].sort(byStartRoomAndStatus).forEach((session) => {
-    const start = parseISO(session.start_time).getTime();
-    const end = parseISO(session.end_time).getTime();
-    if (activeGroup.length > 0 && start >= groupEnd) {
-      flushGroup();
-      activeGroup = [];
-      groupEnd = 0;
-    }
-    activeGroup.push(session);
-    groupEnd = Math.max(groupEnd, end);
+    const hour = scheduleStartHour(session.start_time);
+    buckets.set(hour, [...(buckets.get(hour) || []), session]);
   });
-  flushGroup();
   return buckets;
 };
 
@@ -133,7 +117,7 @@ function WeekGrid({ columns, now, allSessions, onOpenSession }: {
   allSessions: ScheduleSession[];
   onOpenSession: Props["onOpenSession"];
 }) {
-  const columnBuckets = useMemo(() => columns.map((column) => sessionsByDisplayHour(column.sessions)), [columns]);
+  const columnBuckets = useMemo(() => columns.map((column) => sessionsByStartHour(column.sessions)), [columns]);
   const hourlyRows = useMemo(() => hours.map((hour) => {
     const cells = columnBuckets.map((buckets) => buckets.get(hour) || []);
     const maximumSessions = Math.max(1, ...cells.map((cell) => cell.length));
@@ -180,11 +164,11 @@ function WeekGrid({ columns, now, allSessions, onOpenSession }: {
               return (
                 <div
                   key={column.id}
-                  className={cn("relative border-r p-1.5 last:border-r-0", isSameDay(column.date, now) && "bg-primary/[0.025]")}
+                  className={cn("relative border-r p-[5px] last:border-r-0", isSameDay(column.date, now) && "bg-primary/[0.025]")}
                   style={{ minHeight: height }}
                 >
                   {cellSessions.length === 0 ? null : (
-                    <div className="flex h-full flex-col gap-1.5">
+                    <div className="flex h-full flex-col gap-[5px]">
                       {cellSessions.map((session) => (
                         <div key={session.id} className="shrink-0" style={{ height: WEEK_CARD_HEIGHT }}>
                           <ScheduleSessionCard

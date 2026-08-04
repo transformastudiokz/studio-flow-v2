@@ -5,6 +5,7 @@ import {
   normalizeRoom,
   occupiesPlace,
   resolveAvailableRoom,
+  scheduleStartHour,
   sessionConflict,
   sessionsOverlap,
 } from "./schedule";
@@ -50,6 +51,12 @@ describe("schedule business rules", () => {
     expect(formatCoachShortName("Нурханова Тумар Максатовна")).toBe("Тумар Н.");
     expect(formatCoachShortName("Ажар")).toBe("Ажар");
     expect(formatCoachShortName(null)).toBe("Без тренера");
+  });
+
+  it("places a session strictly in the hour when it starts", () => {
+    expect(scheduleStartHour("2026-08-04T19:30:00")).toBe(19);
+    expect(scheduleStartHour("2026-08-04T20:30:00")).toBe(20);
+    expect(scheduleStartHour("2026-08-08T11:00:00")).toBe(11);
   });
 
   it("moves the second overlapping session to the small room", () => {
