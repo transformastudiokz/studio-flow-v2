@@ -157,16 +157,16 @@ export const UpcomingClasses = () => {
 
   return (
     <div className="flex h-full flex-col overflow-hidden rounded-xl border border-border/50 bg-card shadow-sm animate-in fade-in">
-      <div className="flex items-center justify-between gap-4 border-b border-border p-5">
+      <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
         <div>
-          <h3 className="text-lg font-semibold">Ближайшие занятия</h3>
+          <h3 className="text-base font-semibold">Ближайшие занятия</h3>
           <p className="mt-1 text-xs text-muted-foreground">Нажмите на занятие, чтобы открыть список клиентов</p>
         </div>
         <Button asChild variant="ghost" size="sm" className="shrink-0 text-primary">
           <Link to="/schedule">Все занятия <ArrowRight className="ml-1.5 h-4 w-4" /></Link>
         </Button>
       </div>
-      <div className="max-h-[420px] divide-y divide-border overflow-y-auto">
+      <div className="max-h-[210px] divide-y divide-border overflow-y-auto">
         {isLoading ? (
           <div className="flex justify-center p-8"><Loader2 className="animate-spin text-primary" /></div>
         ) : classes.length === 0 ? (
@@ -187,13 +187,13 @@ export const UpcomingClasses = () => {
                 <DialogTrigger asChild>
                   <button
                     type="button"
-                    className={`block w-full p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary ${item.booking_status === "cancelled" ? "bg-slate-200 text-slate-600 hover:bg-slate-200" : item.booking_status === "closed" ? "bg-slate-50 hover:bg-slate-100" : "hover:bg-muted/40"}`}
+                    className={`block w-full px-4 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary ${item.booking_status === "cancelled" ? "bg-slate-200 text-slate-600 hover:bg-slate-200" : item.booking_status === "closed" ? "bg-slate-50 hover:bg-slate-100" : "hover:bg-muted/40"}`}
                   >
-                    <div className="mb-2 flex items-start justify-between">
+                    <div className="flex items-start justify-between">
                       <div>
                         <h4 className="font-medium text-foreground">{item.class_type?.name}</h4>
                         {item.booking_status !== "open" && <p className="mt-1 text-xs font-semibold text-slate-600">{item.booking_status === "cancelled" ? "Занятие отменено" : "Запись закрыта"}{item.booking_closed_reason ? ` · ${item.booking_closed_reason}` : ""}</p>}
-                        <p className="mt-1 flex items-center gap-1 text-sm text-muted-foreground">
+                        <p className="flex items-center gap-1 text-xs text-muted-foreground">
                           <Users className="h-3 w-3" /> {item.coach?.name || "Без тренера"}
                         </p>
                       </div>
@@ -207,7 +207,7 @@ export const UpcomingClasses = () => {
                         </div>
                       </div>
                     </div>
-                    <div className="mt-2 flex items-center gap-2">
+                    <div className="mt-1 flex items-center gap-2">
                       <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-secondary">
                         <div
                           className={`h-full rounded-full transition-all ${percent >= 100 ? "bg-red-500" : "bg-primary"}`}
