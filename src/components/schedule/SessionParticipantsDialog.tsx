@@ -32,6 +32,14 @@ const attendanceStatus = {
   late_cancel: { label: "Поздняя отмена", className: "border-red-300 bg-red-100 text-red-800" },
 } as const;
 
+const onefitStatus = {
+  queued: { label: "В очереди", className: "border-sky-200 bg-sky-50 text-sky-700" },
+  confirmed: { label: "Подтверждён", className: "border-blue-200 bg-blue-50 text-blue-700" },
+  checked_in: { label: "Пришёл", className: "border-emerald-200 bg-emerald-50 text-emerald-700" },
+  no_show: { label: "Не пришёл", className: "border-orange-200 bg-orange-50 text-orange-700" },
+  cancelled: { label: "Отменил", className: "border-red-200 bg-red-50 text-red-700" },
+} as const;
+
 type ClientOption = ScheduleClient & { clientStatus?: ClientStatus };
 
 type TransferSession = Pick<ScheduleSession, "id" | "start_time" | "end_time" | "capacity" | "room" | "booking_status" | "class_type" | "coach"> & {
@@ -284,8 +292,8 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
       if (!nextOpen && clientFormDirty && !window.confirm("Закрыть окно без сохранения нового клиента? Введённые данные будут потеряны.")) return;
       onOpenChange(nextOpen);
     }}>
-      <DialogContent className="flex max-h-[88vh] w-[calc(100vw-24px)] max-w-[780px] flex-col gap-0 overflow-hidden p-0 shadow-2xl">
-        <DialogHeader className="border-b bg-white px-5 py-4 pr-12">
+      <DialogContent className="flex h-[calc(100dvh-24px)] max-h-[900px] w-[calc(100vw-24px)] max-w-[780px] flex-col gap-0 overflow-hidden p-0 shadow-2xl sm:h-[88dvh]">
+        <DialogHeader className="shrink-0 border-b bg-white px-5 py-4 pr-12">
           <div className="flex items-start justify-between gap-4">
             <div>
               <DialogTitle className="text-lg">{current.class_type?.name || "Занятие"}</DialogTitle>
@@ -309,8 +317,8 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
           </details>
         </DialogHeader>
 
-        <div className="flex min-h-0 flex-1 flex-col">
-          <div className="flex flex-wrap items-center gap-2 border-b bg-muted/20 px-5 py-3">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div className="flex shrink-0 flex-wrap items-center gap-2 border-b bg-muted/20 px-5 py-3">
             <Button size="sm" onClick={() => { setShowAdd((value) => !value); setShowCreate(false); }} disabled={current.booking_status !== "open" || occupied >= current.capacity}>
               <Plus className="mr-1.5 h-4 w-4" /> Добавить клиента
             </Button>
@@ -351,7 +359,7 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
             </div>
           ) : null}
 
-          <ScrollArea className="min-h-0 flex-1">
+          <ScrollArea className="h-0 min-h-0 flex-1 overscroll-contain">
             {isLoading ? (
               <div className="flex justify-center p-12"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
             ) : activeParticipants.length === 0 && onefitParticipants.length === 0 ? (
@@ -362,8 +370,8 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
                   const client = booking.user;
                   const status = attendanceStatus[booking.status as keyof typeof attendanceStatus] || attendanceStatus.booked;
                   return (
-                    <div key={booking.id} className="flex min-h-16 flex-wrap items-center gap-3 px-5 py-2.5 sm:flex-nowrap">
-                      <ClientStatusIndicators status={booking.clientStatus} reserveSpace />
+                    <div key={booking.id} className="flex min-h-14 flex-wrap items-center gap-3 px-5 py-2 sm:flex-nowrap">
+                      <ClientStatusIndicators status={booking.clientStatus} reserveSpace className="w-14" />
                       <div className="min-w-0 flex-1">
                         {client ? <Link to={`/clients/${client.id}`} className="truncate text-sm font-semibold hover:text-primary hover:underline">{client.first_name} {client.last_name || ""}</Link> : <span className="text-sm font-semibold">Неизвестный клиент</span>}
                         <p className="truncate text-xs text-muted-foreground">{client?.phone || "Телефон не указан"}</p>
@@ -385,26 +393,32 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
                   );
                 })}
                 {onefitParticipants.length > 0 ? (
-                  <div className="border-t-4 border-sky-100 bg-slate-50/80">
-                    <div className="flex items-center gap-2 px-5 py-2 text-[11px] font-semibold uppercase tracking-wide text-sky-700">
-                      <span className="h-2.5 w-2.5 rounded-full bg-sky-500" /> OneFit · {onefitParticipants.length}
+                  <div className="border-t-2 border-sky-100 bg-slate-50/80">
+                    <div className="flex min-h-9 items-center gap-2 px-5 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-sky-700">
+                      <span>OneFit · {onefitParticipants.length}</span>
+                      <span className="h-2.5 w-2.5 rounded-full bg-sky-500 ring-2 ring-white" />
                     </div>
                     <div className="divide-y divide-slate-200/70">
-                      {onefitParticipants.map((participant) => (
-                        <div key={participant.id} className="flex min-h-14 items-center gap-3 px-5 py-2.5 text-slate-600">
-                          <div className="flex w-[62px] shrink-0 items-center gap-1.5" aria-label="Клиент OneFit">
-                            <span className="h-3 w-3 rounded-full bg-sky-500 ring-2 ring-sky-100" />
+                      {onefitParticipants.map((participant) => {
+                        const status = onefitStatus[participant.source_status as keyof typeof onefitStatus] || {
+                          label: participant.source_status || "Статус неизвестен",
+                          className: "border-slate-200 bg-white text-slate-600",
+                        };
+                        return (
+                        <div key={participant.id} className="flex min-h-14 items-center gap-3 px-5 py-2 text-slate-600">
+                          <div className="flex w-14 shrink-0 items-center gap-1.5" aria-label="Клиент OneFit">
                             <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-bold text-sky-700">1FIT</span>
+                            <span className="h-2.5 w-2.5 rounded-full bg-sky-500 ring-2 ring-white" />
                           </div>
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-sm font-semibold">{participant.client_name}</p>
                             <p className="text-xs text-slate-400">Запись через OneFit</p>
                           </div>
-                          <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[11px] font-semibold text-sky-700">
-                            {participant.source_status === "confirmed" ? "Подтверждён" : "В очереди"}
+                          <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${status.className}`}>
+                            {status.label}
                           </span>
                         </div>
-                      ))}
+                      )})}
                     </div>
                   </div>
                 ) : null}
