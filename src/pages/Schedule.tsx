@@ -136,12 +136,17 @@ export default function Schedule() {
 
   const requestOnefitSync = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.from("onefit_sync_runs").insert({
-        trigger_type: "manual",
-        status: "queued",
-        source_date: kazakhstanDate(),
+      const { data: sessionData } = await supabase.auth.getSession();
+      const response = await fetch("/api/schedule", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${sessionData.session?.access_token || ""}`,
+        },
+        body: JSON.stringify({ action: "request-onefit-sync", sourceDate: kazakhstanDate() }),
       });
-      if (error) throw error;
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Не удалось запустить обновление OneFit");
     },
     onSuccess: () => {
       toast.success("Обновление OneFit запущено");

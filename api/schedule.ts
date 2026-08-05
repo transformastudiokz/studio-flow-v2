@@ -35,6 +35,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!staff) return res.status(403).json({ error: "Доступ только сотрудникам студии" });
 
     const action = req.body?.action;
+    if (action === "request-onefit-sync") {
+      const sourceDate = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Almaty",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(new Date());
+      const { error } = await adminClient!.from("onefit_sync_runs").insert({
+        trigger_type: "manual",
+        status: "queued",
+        source_date: sourceDate,
+      });
+      if (error) throw error;
+      return res.status(202).json({ queued: true });
+    }
+
     if (action === "search-clients") {
       const rawQuery = String(req.body?.query || "").trim();
       const safeQuery = rawQuery.replace(/[%_,()]/g, " ").replace(/\s+/g, " ").trim();
