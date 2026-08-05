@@ -59,6 +59,9 @@ export const scheduleStartHour = (iso: string) => parseISO(iso).getHours();
 export const occupiesPlace = (status: string) =>
   !["cancelled", "late_cancel", "absent"].includes(status);
 
+export const showsFirstBookingIndicator = (status: string) =>
+  !["cancelled", "late_cancel"].includes(status);
+
 export const activeBookings = (session: Pick<ScheduleSession, "bookings">) =>
   (session.bookings || []).filter((booking) => occupiesPlace(booking.status));
 

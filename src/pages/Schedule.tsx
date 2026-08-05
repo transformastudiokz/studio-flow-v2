@@ -5,7 +5,7 @@ import { ru } from "date-fns/locale";
 import { ChevronLeft, ChevronRight, Copy, Loader2, Plus, RefreshCw, RotateCcw } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { fetchClientStatuses, getClientStatusForBooking } from "@/lib/client-status";
-import { normalizeRoom, type ScheduleSession } from "@/lib/schedule";
+import { normalizeRoom, showsFirstBookingIndicator, type ScheduleSession } from "@/lib/schedule";
 import { cn } from "@/lib/utils";
 import { CopyWeekDialog } from "@/components/schedule/CopyWeekDialog";
 import { ScheduleGrid, type ScheduleView } from "@/components/schedule/ScheduleGrid";
@@ -84,7 +84,10 @@ export default function Schedule() {
       return raw.map((item) => ({
         ...item,
         room: normalizeRoom(item.room),
-        firstBookingCount: item.bookings.filter((booking) => getClientStatusForBooking(statuses.get(booking.user_id), booking.id)?.isFirstVisit).length,
+        firstBookingCount: item.bookings.filter((booking) =>
+          showsFirstBookingIndicator(booking.status)
+          && getClientStatusForBooking(statuses.get(booking.user_id), booking.id)?.isFirstVisit,
+        ).length,
       }));
     },
   });
