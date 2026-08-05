@@ -31,29 +31,29 @@ export const ClientStatusIndicators = ({
   const membership = status ? membershipConfig[status.membership] : null;
 
   return (
-    <span className={cn("inline-flex shrink-0 items-center gap-1.5", reserveSpace && "w-10", className)}>
+    <span className={cn("inline-grid shrink-0 grid-cols-[32px_12px] items-center gap-1", reserveSpace && "w-12", className)}>
       {status?.isFirstVisit ? (
       <Star
-          className="h-4 w-4 fill-amber-400 text-amber-500"
+          className="h-4 w-4 justify-self-center fill-amber-400 text-amber-500"
           aria-label="Первая запись клиента"
         >
           <title>Первая запись клиента</title>
         </Star>
       ) : status?.isRepeatBeforeFirstVisit ? (
         <Star
-          className="h-4 w-4 fill-slate-300 text-slate-400"
+          className="h-4 w-4 justify-self-center fill-slate-300 text-slate-400"
           aria-label="Повторная запись до первого посещения"
         >
           <title>Повторная запись: клиент ещё ни разу не пришёл</title>
         </Star>
-      ) : reserveSpace ? <span className="h-4 w-4" aria-hidden="true" /> : null}
+      ) : reserveSpace ? <span className="h-4 w-4 justify-self-center" aria-hidden="true" /> : null}
       {membership ? (
         <span
-          className={cn("h-2.5 w-2.5 rounded-full ring-2 ring-white", membership.className)}
+          className={cn("col-start-2 h-3 w-3 justify-self-center rounded-full ring-2 ring-white", membership.className)}
           aria-label={membership.label}
           title={membership.label}
         />
-      ) : reserveSpace ? <span className="h-2.5 w-2.5" aria-hidden="true" /> : null}
+      ) : reserveSpace ? <span className="col-start-2 h-3 w-3 justify-self-center" aria-hidden="true" /> : null}
     </span>
   );
 };

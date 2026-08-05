@@ -292,8 +292,8 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
       if (!nextOpen && clientFormDirty && !window.confirm("Закрыть окно без сохранения нового клиента? Введённые данные будут потеряны.")) return;
       onOpenChange(nextOpen);
     }}>
-      <DialogContent className="flex h-[calc(100dvh-24px)] max-h-[900px] w-[calc(100vw-24px)] max-w-[780px] flex-col gap-0 overflow-hidden p-0 shadow-2xl sm:h-[88dvh]">
-        <DialogHeader className="shrink-0 border-b bg-white px-5 py-4 pr-12">
+      <DialogContent className="flex h-[calc(100dvh-24px)] max-h-[900px] w-[calc(100vw-24px)] max-w-[780px] flex-col gap-0 overflow-hidden p-0 shadow-2xl sm:h-[92dvh]">
+        <DialogHeader className="shrink-0 border-b bg-white px-5 py-2 pr-12">
           <div className="flex items-start justify-between gap-4">
             <div>
               <DialogTitle className="text-lg">{current.class_type?.name || "Занятие"}</DialogTitle>
@@ -318,14 +318,14 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
         </DialogHeader>
 
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <div className="flex shrink-0 flex-wrap items-center gap-2 border-b bg-muted/20 px-5 py-3">
-            <Button size="sm" onClick={() => { setShowAdd((value) => !value); setShowCreate(false); }} disabled={current.booking_status !== "open" || occupied >= current.capacity}>
+          <div className="flex shrink-0 flex-wrap items-center gap-2 border-b bg-muted/20 px-5 py-1.5">
+            <Button size="sm" className="h-8" onClick={() => { setShowAdd((value) => !value); setShowCreate(false); }} disabled={current.booking_status !== "open" || occupied >= current.capacity}>
               <Plus className="mr-1.5 h-4 w-4" /> Добавить клиента
             </Button>
-            <Button size="sm" variant="outline" onClick={() => { setShowCreate(true); setShowAdd(true); }} disabled={current.booking_status !== "open" || occupied >= current.capacity}>
+            <Button size="sm" variant="outline" className="h-8" onClick={() => { setShowCreate(true); setShowAdd(true); }} disabled={current.booking_status !== "open" || occupied >= current.capacity}>
               <UserPlus className="mr-1.5 h-4 w-4" /> Создать нового
             </Button>
-            <Button size="sm" variant="ghost" className="ml-auto" onClick={() => { onOpenChange(false); onEdit(current); }}>
+            <Button size="sm" variant="ghost" className="ml-auto h-8" onClick={() => { onOpenChange(false); onEdit(current); }}>
               <Settings2 className="mr-1.5 h-4 w-4" /> Настройки занятия
             </Button>
           </div>
@@ -370,19 +370,19 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
                   const client = booking.user;
                   const status = attendanceStatus[booking.status as keyof typeof attendanceStatus] || attendanceStatus.booked;
                   return (
-                    <div key={booking.id} className="flex min-h-14 flex-wrap items-center gap-3 px-5 py-2 sm:flex-nowrap">
-                      <ClientStatusIndicators status={booking.clientStatus} reserveSpace className="w-14" />
+                    <div key={booking.id} className="grid min-h-11 grid-cols-[48px_minmax(0,1fr)_44px] items-center gap-x-2 px-4 py-1 sm:min-h-9 sm:grid-cols-[48px_minmax(0,1fr)_40px_136px_40px] sm:py-0">
+                      <ClientStatusIndicators status={booking.clientStatus} reserveSpace />
                       <div className="min-w-0 flex-1">
-                        {client ? <Link to={`/clients/${client.id}`} className="truncate text-sm font-semibold hover:text-primary hover:underline">{client.first_name} {client.last_name || ""}</Link> : <span className="text-sm font-semibold">Неизвестный клиент</span>}
-                        <p className="truncate text-xs text-muted-foreground">{client?.phone || "Телефон не указан"}</p>
+                        {client ? <Link to={`/clients/${client.id}`} className="block truncate text-[12px] font-semibold leading-3.5 hover:text-primary hover:underline sm:text-[12px]">{client.first_name} {client.last_name || ""}</Link> : <span className="text-[12px] font-semibold">Неизвестный клиент</span>}
+                        <p className="truncate text-[10px] leading-3.5 text-muted-foreground">{client?.phone || "Телефон не указан"}</p>
                       </div>
-                      <Button size="icon" variant="ghost" className="h-9 w-9 shrink-0 text-green-600" aria-label="Написать в WhatsApp" title="Написать в WhatsApp" onClick={() => openWhatsApp(client)} disabled={!client?.phone}><MessageCircle className="h-4 w-4" /></Button>
+                      <Button size="icon" variant="ghost" className="hidden h-8 w-8 justify-self-center text-green-600 sm:inline-flex" aria-label={`Написать ${client?.first_name || "клиенту"} в WhatsApp`} title="Написать в WhatsApp" onClick={() => openWhatsApp(client)} disabled={!client?.phone}><MessageCircle className="h-4 w-4" /></Button>
                       <Select value={booking.status} disabled={updateStatus.isPending} onValueChange={(value) => updateStatus.mutate({ id: booking.id, status: value })}>
-                        <SelectTrigger className={`h-9 w-[150px] shrink-0 text-xs font-semibold ${status.className}`}><SelectValue /></SelectTrigger>
+                        <SelectTrigger aria-label={`Статус посещения: ${client?.first_name || "клиент"}`} className={`col-span-2 col-start-2 row-start-2 mt-1 h-11 w-full justify-self-center text-[11px] font-semibold sm:col-span-1 sm:col-start-4 sm:row-start-1 sm:mt-0 sm:h-7 sm:w-[136px] ${status.className}`}><SelectValue /></SelectTrigger>
                         <SelectContent><SelectItem value="booked">Записан</SelectItem><SelectItem value="completed">Пришёл</SelectItem><SelectItem value="absent">Не пришёл</SelectItem><SelectItem value="cancelled">Отмена</SelectItem><SelectItem value="late_cancel">Поздняя отмена</SelectItem></SelectContent>
                       </Select>
                       <DropdownMenu>
-                        <DropdownMenuTrigger asChild><Button size="icon" variant="ghost" className="h-9 w-9 shrink-0" aria-label="Действия с записью"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+                        <DropdownMenuTrigger asChild><Button size="icon" variant="ghost" className="col-start-3 row-start-1 h-11 w-11 justify-self-center sm:col-start-5 sm:h-8 sm:w-8" aria-label={`Действия с записью: ${client?.first_name || "клиент"}`}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => { setTransferBooking(booking); setTargetSessionId(""); }}><CalendarSync className="mr-2 h-4 w-4" />Перенести</DropdownMenuItem>
                           <DropdownMenuSeparator />
@@ -394,9 +394,8 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
                 })}
                 {onefitParticipants.length > 0 ? (
                   <div className="border-t-2 border-sky-100 bg-slate-50/80">
-                    <div className="flex min-h-9 items-center gap-2 px-5 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-sky-700">
+                    <div className="flex min-h-6 items-center px-4 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-700">
                       <span>OneFit · {onefitParticipants.length}</span>
-                      <span className="h-2.5 w-2.5 rounded-full bg-sky-500 ring-2 ring-white" />
                     </div>
                     <div className="divide-y divide-slate-200/70">
                       {onefitParticipants.map((participant) => {
@@ -405,18 +404,20 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
                           className: "border-slate-200 bg-white text-slate-600",
                         };
                         return (
-                        <div key={participant.id} className="flex min-h-14 items-center gap-3 px-5 py-2 text-slate-600">
-                          <div className="flex w-14 shrink-0 items-center gap-1.5" aria-label="Клиент OneFit">
-                            <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-bold text-sky-700">1FIT</span>
-                            <span className="h-2.5 w-2.5 rounded-full bg-sky-500 ring-2 ring-white" />
+                        <div key={participant.id} className="grid min-h-11 grid-cols-[48px_minmax(0,1fr)_44px] items-center gap-x-2 px-4 py-1 text-slate-600 sm:min-h-9 sm:grid-cols-[48px_minmax(0,1fr)_40px_136px_40px] sm:py-0">
+                          <div className="grid w-12 grid-cols-[32px_12px] items-center gap-1" aria-label="Запись через OneFit">
+                            <span className="justify-self-center rounded bg-sky-100 px-1 py-0.5 text-[9px] font-bold text-sky-700">1FIT</span>
+                            <span className="h-3 w-3 justify-self-center rounded-full bg-sky-500 ring-2 ring-white" />
                           </div>
                           <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-semibold">{participant.client_name}</p>
-                            <p className="text-xs text-slate-400">Запись через OneFit</p>
+                            <p className="truncate text-[12px] font-semibold leading-3.5">{participant.client_name}</p>
+                            <p className="truncate text-[10px] leading-3.5 text-slate-400">Запись через OneFit</p>
                           </div>
-                          <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${status.className}`}>
+                          <span className="hidden sm:block" aria-hidden="true" />
+                          <span aria-label={`Статус OneFit: ${status.label}`} className={`col-span-2 col-start-2 row-start-2 mt-1 inline-flex h-11 w-full items-center justify-center justify-self-center rounded-lg border px-2 text-center text-xs font-semibold sm:col-span-1 sm:col-start-4 sm:row-start-1 sm:mt-0 sm:h-7 sm:w-[136px] ${status.className}`}>
                             {status.label}
                           </span>
+                          <span className="hidden sm:block" aria-hidden="true" />
                         </div>
                       )})}
                     </div>
