@@ -17,9 +17,9 @@ import {
   ShieldCheck,
   DollarSign,
   ScrollText,
-  UserRoundPlus
-  ,WalletCards
-  ,UsersRound
+  UserRoundPlus,
+  WalletCards,
+  UsersRound,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
@@ -68,45 +68,53 @@ export const Sidebar = () => {
   };
 
   return (
-    <div className="h-screen w-64 bg-slate-900 text-white flex flex-col fixed left-0 top-0 border-r border-slate-800 z-50">
-      <div className="p-6">
-        <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-blue-400 bg-clip-text text-transparent">
-          Balance yoga studio
-        </h1>
-        <p className="text-xs text-slate-400 mt-1">Панель управления</p>
+    <aside className="fixed left-0 top-0 z-50 flex h-screen w-28 flex-col border-r border-slate-800 bg-slate-900 text-white shadow-xl shadow-slate-950/10">
+      <div className="flex h-20 shrink-0 items-center justify-center border-b border-slate-800/80 px-2">
+        <Link
+          to="/dashboard"
+          aria-label="Balance — главная"
+          className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-blue-500 text-3xl font-black leading-none text-white shadow-lg shadow-primary/20 transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+        >
+          B
+        </Link>
       </div>
 
-      <nav className="flex-1 px-4 space-y-1 overflow-y-auto py-4 scrollbar-hide">
+      <nav className="scrollbar-hide flex-1 space-y-1 overflow-y-auto px-2 py-3" aria-label="Основное меню">
         {navigation.map((item) => {
-          const isActive = location.pathname === item.href;
+          const isActive = item.href === "/dashboard"
+            ? location.pathname === item.href
+            : location.pathname === item.href || location.pathname.startsWith(`${item.href}/`);
           return (
             <Link
               key={item.name}
               to={item.href}
+              title={item.name}
+              aria-current={isActive ? "page" : undefined}
               className={cn(
-                "flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-xl transition-all duration-200",
+                "group relative flex min-h-[58px] w-full flex-col items-center justify-center gap-1 rounded-xl px-1.5 py-2 text-center transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900",
                 isActive
-                  ? "bg-primary text-white shadow-lg shadow-primary/20 translate-x-1"
-                  : "text-slate-400 hover:text-white hover:bg-slate-800"
+                  ? "bg-primary/95 text-white shadow-md shadow-primary/20 after:absolute after:inset-y-2 after:right-[-8px] after:w-[3px] after:rounded-l-full after:bg-emerald-300"
+                  : "text-slate-400 hover:bg-slate-800 hover:text-white"
               )}
             >
-              <item.icon className={cn("w-5 h-5", isActive ? "text-white" : "text-slate-400 group-hover:text-white")} />
-              {item.name}
+              <item.icon className={cn("h-6 w-6 shrink-0 stroke-[1.8]", isActive ? "text-white" : "text-slate-300 group-hover:text-white")} aria-hidden="true" />
+              <span className="line-clamp-2 max-w-full text-[10px] font-semibold leading-[12px] tracking-[-0.01em]">{item.name}</span>
             </Link>
           );
         })}
       </nav>
 
-      <div className="p-4 border-t border-slate-800">
+      <div className="shrink-0 border-t border-slate-800 p-2">
         <Button 
           variant="ghost" 
-          className="w-full justify-start text-red-400 hover:text-red-300 hover:bg-red-900/20 gap-3"
+          className="h-14 w-full flex-col gap-1 rounded-xl px-1 text-red-400 hover:bg-red-900/20 hover:text-red-300"
           onClick={handleLogout}
+          title="Выйти"
         >
-          <LogOut className="w-5 h-5" />
-          Выйти
+          <LogOut className="h-6 w-6" />
+          <span className="text-[10px] font-semibold leading-none">Выйти</span>
         </Button>
       </div>
-    </div>
+    </aside>
   );
 };

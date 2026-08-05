@@ -8,7 +8,7 @@ export const MainLayout = () => {
       <Sidebar />
       
       {/* main — это область, где меняется контент */}
-      <main className="flex-1 p-8 overflow-y-auto h-screen">
+      <main className="ml-28 h-screen flex-1 overflow-y-auto p-8">
         <div className="max-w-7xl mx-auto">
             {/* Outlet — это место, куда React Router подставляет текущую страницу */}
             <Outlet />
