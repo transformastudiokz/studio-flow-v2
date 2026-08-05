@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { addDays, addWeeks, endOfWeek, format, isSameDay, parseISO, startOfWeek } from "date-fns";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { addDays, addWeeks, endOfWeek, format, formatDistanceToNow, isSameDay, parseISO, startOfWeek } from "date-fns";
 import { ru } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, Copy, Plus, RotateCcw } from "lucide-react";
+import { ChevronLeft, ChevronRight, Copy, Loader2, Plus, RefreshCw, RotateCcw } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { fetchClientStatuses, getClientStatusForBooking } from "@/lib/client-status";
 import { normalizeRoom, type ScheduleSession } from "@/lib/schedule";
@@ -14,6 +14,7 @@ import { SessionParticipantsDialog } from "@/components/schedule/SessionParticip
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { toast } from "sonner";
 
 const viewOptions: Array<{ value: ScheduleView; label: string }> = [
   { value: "week", label: "Неделя" },
@@ -25,7 +26,19 @@ const viewOptions: Array<{ value: ScheduleView; label: string }> = [
 type ClassTypeOption = { id: string; name: string; color: string | null; duration_min?: number | null };
 type CoachOption = { id: string; name: string };
 
+const kazakhstanDate = () => {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Almaty",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}`;
+};
+
 export default function Schedule() {
+  const queryClient = useQueryClient();
   const [weekOffset, setWeekOffset] = useState(0);
   const [selectedDay, setSelectedDay] = useState(new Date());
   const [view, setView] = useState<ScheduleView>(() => window.matchMedia("(max-width: 767px)").matches ? "day" : "week");
@@ -94,6 +107,46 @@ export default function Schedule() {
     },
   });
 
+  const { data: onefitRuns = [] } = useQuery({
+    queryKey: ["onefit_sync_runs"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("onefit_sync_runs")
+        .select("id,status,source_date,found_count,matched_count,unmatched_count,started_at,finished_at")
+        .order("started_at", { ascending: false })
+        .limit(10);
+      if (error) throw error;
+      return data || [];
+    },
+    refetchInterval: 15_000,
+  });
+
+  const latestOnefitRun = onefitRuns[0];
+  const lastSuccessfulOnefitRun = onefitRuns.find((run) => run.status === "success");
+  const onefitRunning = latestOnefitRun?.status === "queued" || latestOnefitRun?.status === "running";
+
+  const requestOnefitSync = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from("onefit_sync_runs").insert({
+        trigger_type: "manual",
+        status: "queued",
+        source_date: kazakhstanDate(),
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Обновление OneFit запущено");
+      queryClient.invalidateQueries({ queryKey: ["onefit_sync_runs"] });
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  useEffect(() => {
+    if (latestOnefitRun?.status === "success") {
+      queryClient.invalidateQueries({ queryKey: ["schedule_sessions"] });
+    }
+  }, [latestOnefitRun?.id, latestOnefitRun?.status, queryClient]);
+
   const filteredSessions = useMemo(() => sessions.filter((session) => {
     if (coachFilter !== "all" && (coachFilter === "none" ? Boolean(session.coach_id) : session.coach_id !== coachFilter)) return false;
     if (roomFilter !== "all" && normalizeRoom(session.room) !== roomFilter) return false;
@@ -142,6 +195,27 @@ export default function Schedule() {
             {viewOptions.map((option) => <button key={option.value} type="button" onClick={() => setView(option.value)} className={cn("whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition", view === option.value ? "bg-white text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>{option.label}</button>)}
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <div className="mr-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              <span className="h-1.5 w-1.5 rounded-full bg-sky-500" />
+              <span className="hidden sm:inline">
+                {onefitRunning
+                  ? "OneFit обновляется…"
+                  : lastSuccessfulOnefitRun?.finished_at
+                    ? `OneFit обновлён ${formatDistanceToNow(parseISO(lastSuccessfulOnefitRun.finished_at), { addSuffix: true, locale: ru })}`
+                    : "OneFit ещё не обновлялся"}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 px-2 text-xs font-normal text-muted-foreground hover:text-foreground"
+                onClick={() => requestOnefitSync.mutate()}
+                disabled={requestOnefitSync.isPending || onefitRunning}
+                title="Получить свежие записи из OneFit"
+              >
+                {requestOnefitSync.isPending || onefitRunning ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}
+                Обновить
+              </Button>
+            </div>
             <Select value={classFilter} onValueChange={setClassFilter}><SelectTrigger className="h-9 w-[175px] text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Все направления</SelectItem>{classTypes.map((type) => <SelectItem key={type.id} value={type.id}>{type.name}</SelectItem>)}</SelectContent></Select>
             <Select value={coachFilter} onValueChange={setCoachFilter}><SelectTrigger className="h-9 w-[175px] text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Все тренеры</SelectItem><SelectItem value="none">Без тренера</SelectItem>{coaches.map((coach) => <SelectItem key={coach.id} value={coach.id}>{coach.name}</SelectItem>)}</SelectContent></Select>
             <Select value={roomFilter} onValueChange={setRoomFilter}><SelectTrigger className="h-9 w-[150px] text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Все залы</SelectItem><SelectItem value="Большой зал">Большой зал</SelectItem><SelectItem value="Малый зал">Малый зал</SelectItem></SelectContent></Select>

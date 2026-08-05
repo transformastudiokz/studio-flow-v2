@@ -9,6 +9,6 @@ export const config = {
   serviceRoleKey: required("SUPABASE_SERVICE_ROLE_KEY"),
   profileDir: process.env.ONEFIT_PROFILE_DIR || "/var/lib/onefit-sync/browser-profile",
   chromiumPath: process.env.CHROMIUM_PATH || "/usr/bin/chromium-browser",
-  pilotDate: process.env.ONEFIT_PILOT_DATE || "2026-08-05",
+  targetDate: process.env.ONEFIT_TARGET_DATE || new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString().slice(0, 10),
   onefitUrl: "https://erp.1fit.app/",
 };

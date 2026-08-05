@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Loader2, Trash2, Users, TrendingUp, RefreshCw, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Plus, Loader2, Trash2, Users, TrendingUp } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
@@ -64,32 +64,6 @@ const Aggregators = () => {
       if (error) throw error;
       return data || [];
     }
-  });
-
-  const { data: onefitRuns = [] } = useQuery({
-    queryKey: ["onefit_sync_runs"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("onefit_sync_runs").select("*").order("started_at", { ascending: false }).limit(5);
-      if (error) throw error;
-      return data || [];
-    },
-    refetchInterval: 15_000,
-  });
-
-  const requestOnefitSync = useMutation({
-    mutationFn: async () => {
-      const { error } = await supabase.from("onefit_sync_runs").insert({
-        trigger_type: "manual",
-        status: "queued",
-        source_date: "2026-08-05",
-      });
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      toast.success("Синхронизация OneFit поставлена в очередь");
-      queryClient.invalidateQueries({ queryKey: ["onefit_sync_runs"] });
-    },
-    onError: (error: Error) => toast.error(error.message),
   });
 
   const { data: individualVisits = [], isLoading: loadingIndividual } = useQuery({
@@ -188,27 +162,6 @@ const Aggregators = () => {
       <div>
         <h1 className="text-3xl font-bold">Агрегаторы</h1>
         <p className="text-muted-foreground">Учёт посещений от партнёров (1Fit и др.)</p>
-      </div>
-
-      <div className="rounded-xl border border-sky-100 bg-sky-50/60 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2 font-semibold text-sky-950"><span className="h-2.5 w-2.5 rounded-full bg-sky-500" />OneFit — пилот на 5 августа</div>
-            <p className="mt-1 text-sm text-sky-800/70">Записи сопоставляются по дате, времени начала и названию занятия.</p>
-          </div>
-          <Button onClick={() => requestOnefitSync.mutate()} disabled={requestOnefitSync.isPending || onefitRuns[0]?.status === "queued" || onefitRuns[0]?.status === "running"}>
-            {requestOnefitSync.isPending || onefitRuns[0]?.status === "queued" || onefitRuns[0]?.status === "running" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-            Синхронизировать сейчас
-          </Button>
-        </div>
-        {onefitRuns[0] ? (
-          <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-sky-100 pt-3 text-xs text-sky-900/70">
-            {onefitRuns[0].status === "success" ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : onefitRuns[0].status === "failed" || onefitRuns[0].status === "partial" ? <AlertTriangle className="h-4 w-4 text-amber-600" /> : <Loader2 className="h-4 w-4 animate-spin text-sky-600" />}
-            <span>Найдено: <strong>{onefitRuns[0].found_count || 0}</strong></span>
-            <span>Сопоставлено с занятиями: <strong>{onefitRuns[0].matched_count || 0}</strong></span>
-            {onefitRuns[0].unmatched_count > 0 ? <span className="text-amber-700">Не сопоставлено: <strong>{onefitRuns[0].unmatched_count}</strong></span> : null}
-          </div>
-        ) : null}
       </div>
 
       <Tabs defaultValue="sessions">

@@ -23,7 +23,7 @@ export async function createRun(triggerType) {
   const rows = await rest("onefit_sync_runs", {
     method: "POST",
     headers: { Prefer: "return=representation" },
-    body: JSON.stringify({ trigger_type: triggerType, status: "running", source_date: config.pilotDate }),
+    body: JSON.stringify({ trigger_type: triggerType, status: "running", source_date: config.targetDate }),
   });
   return rows[0];
 }

@@ -14,7 +14,7 @@ const execute = (runId) => new Promise((resolve) => {
 
 async function poll() {
   if (running) return;
-  const queued = await rest(`onefit_sync_runs?select=id&status=eq.queued&source_date=eq.${config.pilotDate}&order=started_at.asc&limit=1`);
+  const queued = await rest(`onefit_sync_runs?select=id&status=eq.queued&source_date=eq.${config.targetDate}&order=started_at.asc&limit=1`);
   if (!queued.length) return;
   running = true;
   try {

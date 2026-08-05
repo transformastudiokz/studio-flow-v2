@@ -1,11 +1,10 @@
 [Unit]
-Description=Run OneFit sync three times a day
+Description=Run OneFit sync every 30 minutes during studio hours
 
 [Timer]
-OnCalendar=2026-08-05 14:00:00 Asia/Almaty
-OnCalendar=2026-08-05 20:00:00 Asia/Almaty
+OnCalendar=*-*-* 07..22:00,30:00 Asia/Almaty
 Persistent=true
-RandomizedDelaySec=120
+RandomizedDelaySec=15
 Unit=onefit-sync.service
 
 [Install]

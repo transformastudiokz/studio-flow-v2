@@ -15,7 +15,7 @@ const kazakhstanDate = () => new Date(Date.now() + 5 * 60 * 60 * 1000).toISOStri
 
 const fingerprint = (booking) => crypto
   .createHash("sha256")
-  .update([config.pilotDate, booking.time, normalize(booking.className), normalize(booking.clientName), booking.occurrence].join("|"))
+  .update([config.targetDate, booking.time, normalize(booking.className), normalize(booking.clientName), booking.occurrence].join("|"))
   .digest("hex");
 
 async function acquireLock() {
@@ -60,8 +60,8 @@ async function scrapeToday() {
 }
 
 async function loadSessions() {
-  const from = `${config.pilotDate}T00:00:00+05:00`;
-  const to = `${config.pilotDate}T23:59:59+05:00`;
+  const from = `${config.targetDate}T00:00:00+05:00`;
+  const to = `${config.targetDate}T23:59:59+05:00`;
   return rest(`schedule_sessions?select=id,start_time,class_type:class_types(name)&start_time=gte.${encodeURIComponent(from)}&start_time=lte.${encodeURIComponent(to)}`);
 }
 
@@ -73,9 +73,7 @@ const localTime = (iso) => {
 };
 
 async function sync() {
-  if (kazakhstanDate() !== config.pilotDate) {
-    throw new Error(`OneFit pilot is limited to ${config.pilotDate}`);
-  }
+  if (kazakhstanDate() !== config.targetDate) throw new Error("OneFit sync target must be today in Kazakhstan");
   const lock = await acquireLock();
   let run;
   try {
@@ -99,7 +97,7 @@ async function sync() {
         body: JSON.stringify({
           external_key: externalKey,
           session_id: sessionId,
-          source_date: config.pilotDate,
+          source_date: config.targetDate,
           source_start_time: `${booking.time}:00`,
           source_class_name: booking.className,
           client_name: booking.clientName,
@@ -115,7 +113,7 @@ async function sync() {
     // snapshot and every visible booking has been safely upserted. History is
     // retained: disappeared bookings are marked inactive, never deleted.
     const activeRows = await rest(
-      `onefit_bookings?select=external_key&source_date=eq.${encodeURIComponent(config.pilotDate)}&is_active=eq.true`,
+      `onefit_bookings?select=external_key&source_date=eq.${encodeURIComponent(config.targetDate)}&is_active=eq.true`,
     );
     const cancelledKeys = findMissingActiveKeys(activeRows, seenKeys);
     const reconciledAt = new Date().toISOString();
