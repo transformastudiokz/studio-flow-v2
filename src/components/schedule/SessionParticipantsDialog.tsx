@@ -18,7 +18,7 @@ import { ClientStatusIndicators, ClientStatusLegend } from "@/components/clients
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -30,6 +30,7 @@ const attendanceStatus = {
   absent: { label: "Не пришёл", className: "border-orange-200 bg-orange-50 text-orange-700" },
   cancelled: { label: "Отмена", className: "border-red-200 bg-red-50 text-red-700" },
   late_cancel: { label: "Поздняя отмена", className: "border-red-300 bg-red-100 text-red-800" },
+  transferred: { label: "Перенос", className: "border-violet-200 bg-violet-50 text-violet-700" },
 } as const;
 
 const onefitStatus = {
@@ -97,11 +98,21 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
       if (error) throw error;
       const result = data as unknown as ScheduleSession;
       const ids = (result.bookings || []).map((booking) => booking.user_id).filter(Boolean);
-      const statuses = await fetchClientStatuses(ids);
+      const [statuses, transferResult] = await Promise.all([
+        fetchClientStatuses(ids),
+        supabase
+          .from("booking_change_log")
+          .select("booking_id,new_data")
+          .eq("session_id", result.id)
+          .eq("new_data->>event_type", "rescheduled"),
+      ]);
+      if (transferResult.error) throw transferResult.error;
+      const transferredBookingIds = new Set((transferResult.data || []).map((event) => event.booking_id));
       return {
         ...result,
         bookings: (result.bookings || []).map((booking) => ({
           ...booking,
+          isTransferred: transferredBookingIds.has(booking.id),
           clientStatus: getClientStatusForBooking(statuses.get(booking.user_id), booking.id),
         })),
       } as ScheduleSession & { bookings: Array<ScheduleSession["bookings"][number] & { clientStatus?: ClientStatus }> };
@@ -279,7 +290,9 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
   const onefitParticipants = (details?.onefit_bookings || session.onefit_bookings || []).filter((booking) => booking.is_active);
   const occupied = (details?.bookings || session.bookings || []).filter((booking) => occupiesPlace(booking.status)).length + onefitParticipants.length;
   const selectedClient = clientOptions.find((client) => client.id === selectedClientId);
-  const activeParticipants = (details?.bookings || []).filter((booking) => !["cancelled", "late_cancel"].includes(booking.status));
+  const activeParticipants = (details?.bookings || []).filter((booking) =>
+    booking.isTransferred || !["cancelled", "late_cancel"].includes(booking.status),
+  );
 
   const openWhatsApp = (client: ScheduleClient | null) => {
     if (!client?.phone) return toast.error("У клиента не указан телефон");
@@ -368,7 +381,8 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
               <div className="divide-y">
                 {activeParticipants.map((booking) => {
                   const client = booking.user;
-                  const status = attendanceStatus[booking.status as keyof typeof attendanceStatus] || attendanceStatus.booked;
+                  const displayStatus = booking.isTransferred ? "transferred" : booking.status;
+                  const status = attendanceStatus[displayStatus as keyof typeof attendanceStatus] || attendanceStatus.booked;
                   return (
                     <div key={booking.id} className="grid min-h-11 grid-cols-[48px_minmax(0,1fr)_44px] items-center gap-x-2 px-4 py-1 sm:min-h-9 sm:grid-cols-[48px_minmax(0,1fr)_40px_136px_40px] sm:py-0">
                       <ClientStatusIndicators status={booking.clientStatus} reserveSpace />
@@ -377,16 +391,21 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
                         <p className="truncate text-[10px] leading-3.5 text-muted-foreground">{client?.phone || "Телефон не указан"}</p>
                       </div>
                       <Button size="icon" variant="ghost" className="hidden h-8 w-8 justify-self-center text-green-600 sm:inline-flex" aria-label={`Написать ${client?.first_name || "клиенту"} в WhatsApp`} title="Написать в WhatsApp" onClick={() => openWhatsApp(client)} disabled={!client?.phone}><MessageCircle className="h-4 w-4" /></Button>
-                      <Select value={booking.status} disabled={updateStatus.isPending} onValueChange={(value) => updateStatus.mutate({ id: booking.id, status: value })}>
+                      <Select value={displayStatus} disabled={updateStatus.isPending || booking.isTransferred} onValueChange={(value) => {
+                        if (value === "transferred") {
+                          setTransferBooking(booking);
+                          setTargetSessionId("");
+                          return;
+                        }
+                        updateStatus.mutate({ id: booking.id, status: value });
+                      }}>
                         <SelectTrigger aria-label={`Статус посещения: ${client?.first_name || "клиент"}`} className={`col-span-2 col-start-2 row-start-2 mt-1 h-11 w-full justify-self-center text-[11px] font-semibold sm:col-span-1 sm:col-start-4 sm:row-start-1 sm:mt-0 sm:h-7 sm:w-[136px] ${status.className}`}><SelectValue /></SelectTrigger>
-                        <SelectContent><SelectItem value="booked">Записан</SelectItem><SelectItem value="completed">Пришёл</SelectItem><SelectItem value="absent">Не пришёл</SelectItem><SelectItem value="cancelled">Отмена</SelectItem><SelectItem value="late_cancel">Поздняя отмена</SelectItem></SelectContent>
+                        <SelectContent><SelectItem value="booked">Записан</SelectItem><SelectItem value="completed">Пришёл</SelectItem><SelectItem value="absent">Не пришёл</SelectItem><SelectItem value="transferred">Перенос</SelectItem><SelectItem value="cancelled">Отмена</SelectItem><SelectItem value="late_cancel">Поздняя отмена</SelectItem></SelectContent>
                       </Select>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild><Button size="icon" variant="ghost" className="col-start-3 row-start-1 h-11 w-11 justify-self-center sm:col-start-5 sm:h-8 sm:w-8" aria-label={`Действия с записью: ${client?.first_name || "клиент"}`}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem className="sm:hidden" disabled={!client?.phone} onClick={() => openWhatsApp(client)}><MessageCircle className="mr-2 h-4 w-4" />Написать в WhatsApp</DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => { setTransferBooking(booking); setTargetSessionId(""); }}><CalendarSync className="mr-2 h-4 w-4" />Перенести</DropdownMenuItem>
-                          <DropdownMenuSeparator />
                           <DropdownMenuItem className="text-red-600" onClick={() => setDeleteBooking(booking)}><Trash2 className="mr-2 h-4 w-4" />Удалить запись</DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>

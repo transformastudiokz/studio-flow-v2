@@ -25,6 +25,7 @@ export type ScheduleBooking = {
   created_at?: string | null;
   user: ScheduleClient | null;
   clientStatus?: import("@/lib/client-status").ClientStatus;
+  isTransferred?: boolean;
 };
 
 export type ScheduleSession = {
