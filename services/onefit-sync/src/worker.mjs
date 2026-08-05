@@ -6,7 +6,7 @@ let running = false;
 const kazakhstanDate = () => new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
 const execute = (runId) => new Promise((resolve) => {
-  const args = [new URL("./sync.mjs", import.meta.url).pathname];
+  const args = [new URL("./sync-range.mjs", import.meta.url).pathname];
   args.push("--manual", "--run-id", runId);
   const child = spawn(process.execPath, args, { stdio: "inherit", env: process.env });
   const timer = setTimeout(() => child.kill("SIGKILL"), 180_000);
