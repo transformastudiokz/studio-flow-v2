@@ -31,6 +31,20 @@ test("matches harmless punctuation and conjunction differences in class names", 
   );
 });
 
+test("matches confirmed OneFit and CRM class aliases", () => {
+  const pairs = [
+    ["Йога для здоровья позвоночника и спины", "Йога для спины и позвоночника"],
+    ["Айенгар йога", "Йога Айенгара"],
+    ["Аштанга", "Йога Аштанга"],
+    ["Стретчинг", "Растяжка"],
+    ["Хатха", "Йога Хатха"],
+    ["Хатха-виньяса", "Йога Хатха - Виньяса"],
+  ];
+  for (const [onefit, crm] of pairs) {
+    assert.equal(normalizeOnefitClassName(onefit), normalizeOnefitClassName(crm));
+  }
+});
+
 test("rejects partial page instead of cancelling data", () => {
   assert.throws(() => parseQueuedSnapshot({ todayVisible: true, declared: 2, cards: [["19:00-20:00", "Йога", "Клиент"]] }), /incomplete/);
 });

@@ -6,10 +6,22 @@ export const normalizeOnefitText = (value) => value
   .trim()
   .replace(/\s+/g, " ");
 
-export const normalizeOnefitClassName = (value) => normalizeOnefitText(value)
+const classAliases = new Map([
+  ["йога для здоровья позвоночника спины", "йога для спины позвоночника"],
+  ["айенгар йога", "йога айенгара"],
+  ["аштанга", "йога аштанга"],
+  ["стретчинг", "растяжка"],
+  ["хатха", "йога хатха"],
+  ["хатха виньяса", "йога хатха виньяса"],
+]);
+
+export const normalizeOnefitClassName = (value) => {
+  const normalized = normalizeOnefitText(value)
   .split(" ")
   .filter((token) => token && token !== "и")
   .join(" ");
+  return classAliases.get(normalized) || normalized;
+};
 
 export function parseVisitSnapshot(snapshot, status = "queued") {
   if (!snapshot?.todayVisible || !Number.isInteger(snapshot.declared)) {

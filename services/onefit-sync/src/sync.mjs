@@ -45,8 +45,31 @@ async function scrapeToday() {
   try {
     const page = context.pages()[0] || await context.newPage();
     await page.goto(config.onefitUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
-    await page.getByText("В очереди", { exact: true }).waitFor({ timeout: 30_000 });
-    await page.getByText("Подтвердившие", { exact: true }).waitFor({ timeout: 30_000 });
+    const target = new Date(`${config.targetDate}T12:00:00+05:00`);
+    const today = kazakhstanDate();
+    const weekdays = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
+    const targetLabel = config.targetDate === today
+      ? `Сегодня ${target.getUTCDate()}`
+      : `${weekdays[target.getUTCDay()]} ${target.getUTCDate()}`;
+    const targetPattern = new RegExp(`^${targetLabel.replace(" ", "\\s*")}$`);
+
+    const selectTargetDate = async () => {
+      await page.getByText("В очереди", { exact: true }).waitFor({ timeout: 30_000 });
+      await page.getByText("Подтвердившие", { exact: true }).waitFor({ timeout: 30_000 });
+      const selectedToday = page.locator("li").filter({ hasText: new RegExp(`^Сегодня\\s*${new Date(`${today}T12:00:00+05:00`).getUTCDate()}$`) });
+      const selectedClass = await selectedToday.getAttribute("class");
+      const targetDateItem = page.locator("li").filter({ hasText: targetPattern });
+      if (await targetDateItem.count() !== 1) throw new Error(`OneFit date is not visible: ${targetLabel}`);
+      await targetDateItem.click();
+      await page.waitForFunction(
+        ({ label, className }) => [...document.querySelectorAll("li")].some((node) =>
+          node.textContent?.replace(/\s+/g, " ").trim() === label && node.className === className),
+        { label: targetLabel, className: selectedClass },
+        { timeout: 10_000 },
+      );
+      await page.waitForTimeout(800);
+    };
+    await selectTargetDate();
     const collectSnapshot = (sectionLabel) => page.evaluate(async (label) => {
         const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         const findSection = () => {
@@ -123,8 +146,7 @@ async function scrapeToday() {
         lastError = error;
         if (attempt < 9) {
           await page.reload({ waitUntil: "domcontentloaded", timeout: 60_000 });
-          await page.getByText("В очереди", { exact: true }).waitFor({ timeout: 30_000 });
-          await page.getByText("Подтвердившие", { exact: true }).waitFor({ timeout: 30_000 });
+          await selectTargetDate();
           await page.waitForTimeout(3_000);
         }
       }
@@ -149,7 +171,13 @@ const localTime = (iso) => {
 };
 
 async function sync() {
-  if (kazakhstanDate() !== config.targetDate) throw new Error("OneFit sync target must be today in Kazakhstan");
+  const today = kazakhstanDate();
+  const allowedDates = new Set([0, 1, 2].map((offset) => {
+    const date = new Date(`${today}T00:00:00Z`);
+    date.setUTCDate(date.getUTCDate() + offset);
+    return date.toISOString().slice(0, 10);
+  }));
+  if (!allowedDates.has(config.targetDate)) throw new Error("OneFit sync target must be today or one of the next two days");
   const lock = await acquireLock();
   if (!lock) {
     console.log(JSON.stringify({ ok: true, skipped: "sync_already_running" }));
