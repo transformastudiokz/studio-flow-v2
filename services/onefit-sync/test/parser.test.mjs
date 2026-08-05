@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseQueuedSnapshot } from "../src/parser.mjs";
+import { normalizeOnefitClassName, parseQueuedSnapshot, parseVisitSnapshot } from "../src/parser.mjs";
 
 test("parses complete booking cards", () => {
   const result = parseQueuedSnapshot({ todayVisible: true, declared: 2, cards: [
@@ -15,6 +15,20 @@ test("parses complete booking cards", () => {
 
 test("supports confirmed zero count", () => {
   assert.deepEqual(parseQueuedSnapshot({ todayVisible: true, declared: 0, cards: [] }), []);
+});
+
+test("preserves confirmed OneFit status", () => {
+  const result = parseVisitSnapshot({ todayVisible: true, declared: 1, cards: [
+    ["19:00-20:00", "Здоровая спина", "Шынар Мусина"],
+  ] }, "confirmed");
+  assert.equal(result[0].status, "confirmed");
+});
+
+test("matches harmless punctuation and conjunction differences in class names", () => {
+  assert.equal(
+    normalizeOnefitClassName("Йога: сила, гибкость, баланс"),
+    normalizeOnefitClassName("Йога: сила, гибкость и баланс"),
+  );
 });
 
 test("rejects partial page instead of cancelling data", () => {

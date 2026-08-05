@@ -6,7 +6,12 @@ export const normalizeOnefitText = (value) => value
   .trim()
   .replace(/\s+/g, " ");
 
-export function parseQueuedSnapshot(snapshot) {
+export const normalizeOnefitClassName = (value) => normalizeOnefitText(value)
+  .split(" ")
+  .filter((token) => token && token !== "и")
+  .join(" ");
+
+export function parseVisitSnapshot(snapshot, status = "queued") {
   if (!snapshot?.todayVisible || !Number.isInteger(snapshot.declared)) {
     throw new Error("OneFit today section is incomplete");
   }
@@ -21,6 +26,8 @@ export function parseQueuedSnapshot(snapshot) {
     const tuple = [timeMatch[1], normalizeOnefitText(fields[1]), normalizeOnefitText(fields[2])].join("|");
     const occurrence = (occurrences.get(tuple) || 0) + 1;
     occurrences.set(tuple, occurrence);
-    return { time: timeMatch[1], className: fields[1], clientName: fields[2], status: "queued", occurrence };
+    return { time: timeMatch[1], className: fields[1], clientName: fields[2], status, occurrence };
   });
 }
+
+export const parseQueuedSnapshot = (snapshot) => parseVisitSnapshot(snapshot, "queued");

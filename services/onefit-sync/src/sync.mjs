@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import { chromium } from "playwright-core";
 import { config } from "./config.mjs";
-import { normalizeOnefitText as normalize, parseQueuedSnapshot } from "./parser.mjs";
+import { normalizeOnefitClassName, normalizeOnefitText as normalize, parseVisitSnapshot } from "./parser.mjs";
 import { findMissingActiveKeys } from "./reconcile.mjs";
 import { claimRun, createRun, finishRun, rest } from "./supabase.mjs";
 
@@ -46,12 +46,11 @@ async function scrapeToday() {
     const page = context.pages()[0] || await context.newPage();
     await page.goto(config.onefitUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
     await page.getByText("В очереди", { exact: true }).waitFor({ timeout: 30_000 });
-    let lastError;
-    for (let attempt = 0; attempt < 10; attempt += 1) {
-      const snapshot = await page.evaluate(async () => {
+    await page.getByText("Подтвердившие", { exact: true }).waitFor({ timeout: 30_000 });
+    const collectSnapshot = (sectionLabel) => page.evaluate(async (label) => {
         const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         const findSection = () => {
-          const heading = [...document.querySelectorAll("p")].find((node) => node.textContent?.trim() === "В очереди");
+          const heading = [...document.querySelectorAll("p")].find((node) => node.textContent?.trim() === label);
           return { heading, section: heading?.parentElement?.parentElement?.parentElement };
         };
         const { heading, section } = findSection();
@@ -74,9 +73,7 @@ async function scrapeToday() {
             const key = JSON.stringify(fields);
             frameCounts.set(key, (frameCounts.get(key) || 0) + 1);
           }
-          for (const [key, count] of frameCounts) {
-            collected.set(key, Math.max(collected.get(key) || 0, count));
-          }
+          for (const [key, count] of frameCounts) collected.set(key, Math.max(collected.get(key) || 0, count));
         };
 
         const step = Math.max(Math.floor((scroller?.clientHeight || 500) * 0.7), 120);
@@ -102,14 +99,22 @@ async function scrapeToday() {
           declared,
           cards,
         };
-      });
+      }, sectionLabel);
+    let lastError;
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const queuedSnapshot = await collectSnapshot("В очереди");
+      const confirmedSnapshot = await collectSnapshot("Подтвердившие");
       try {
-        return parseQueuedSnapshot(snapshot);
+        return [
+          ...parseVisitSnapshot(queuedSnapshot, "queued"),
+          ...parseVisitSnapshot(confirmedSnapshot, "confirmed"),
+        ];
       } catch (error) {
         lastError = error;
         if (attempt < 9) {
           await page.reload({ waitUntil: "domcontentloaded", timeout: 60_000 });
           await page.getByText("В очереди", { exact: true }).waitFor({ timeout: 30_000 });
+          await page.getByText("Подтвердившие", { exact: true }).waitFor({ timeout: 30_000 });
           await page.waitForTimeout(3_000);
         }
       }
@@ -147,7 +152,7 @@ async function sync() {
     for (const booking of bookings) {
       const candidates = sessions.filter((session) =>
         localTime(session.start_time) === booking.time &&
-        normalize(session.class_type?.name || "") === normalize(booking.className));
+        normalizeOnefitClassName(session.class_type?.name || "") === normalizeOnefitClassName(booking.className));
       const sessionId = candidates.length === 1 ? candidates[0].id : null;
       sessionId ? matched += 1 : unmatched += 1;
       const externalKey = fingerprint(booking);
