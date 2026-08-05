@@ -94,6 +94,8 @@ export default function Schedule() {
         ).length,
       }));
     },
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: "always",
   });
 
   const { data: classTypes = [] } = useQuery({
@@ -149,7 +151,7 @@ export default function Schedule() {
   });
 
   useEffect(() => {
-    if (latestOnefitRun?.status === "success") {
+    if (latestOnefitRun?.status === "success" || latestOnefitRun?.status === "partial") {
       queryClient.invalidateQueries({ queryKey: ["schedule_sessions"] });
     }
   }, [latestOnefitRun?.id, latestOnefitRun?.status, queryClient]);

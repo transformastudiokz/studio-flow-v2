@@ -3,6 +3,7 @@ import { config } from "./config.mjs";
 import { finishRun, rest } from "./supabase.mjs";
 
 let running = false;
+const kazakhstanDate = () => new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
 const execute = (runId) => new Promise((resolve) => {
   const args = [new URL("./sync.mjs", import.meta.url).pathname];
@@ -14,7 +15,7 @@ const execute = (runId) => new Promise((resolve) => {
 
 async function poll() {
   if (running) return;
-  const queued = await rest(`onefit_sync_runs?select=id&status=eq.queued&source_date=eq.${config.targetDate}&order=started_at.asc&limit=1`);
+  const queued = await rest(`onefit_sync_runs?select=id&status=eq.queued&source_date=eq.${kazakhstanDate()}&order=started_at.asc&limit=1`);
   if (!queued.length) return;
   running = true;
   try {
