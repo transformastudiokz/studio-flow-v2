@@ -88,6 +88,10 @@ export default function Schedule() {
           showsFirstBookingIndicator(booking.status)
           && getClientStatusForBooking(statuses.get(booking.user_id), booking.id)?.isFirstVisit,
         ).length,
+        repeatBookingCount: item.bookings.filter((booking) =>
+          showsFirstBookingIndicator(booking.status)
+          && getClientStatusForBooking(statuses.get(booking.user_id), booking.id)?.isRepeatBeforeFirstVisit,
+        ).length,
       }));
     },
   });

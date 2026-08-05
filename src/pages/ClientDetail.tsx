@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, User, Phone, Mail, Calendar, CreditCard, History, Edit, Trash2 } from "lucide-react";
+import { ArrowLeft, User, Phone, Mail, Calendar, CreditCard, History, Edit, Trash2, CalendarSync } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format, parseISO } from "date-fns";
 import { ru } from "date-fns/locale";
@@ -67,6 +67,7 @@ export default function ClientDetail() {
         .select(`
           *,
           session:schedule_sessions(
+            id,
             start_time,
             class_type:class_types(name)
           )
@@ -77,6 +78,61 @@ export default function ClientDetail() {
       return data;
     }
   });
+
+  const { data: transferEvents = [] } = useQuery({
+    queryKey: ['client_booking_transfers', id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('booking_change_log')
+        .select('id,changed_at,old_data,new_data')
+        .eq('user_id', id)
+        .eq('action', 'updated')
+        .order('changed_at', { ascending: false });
+      if (error) throw error;
+      const transfers = (data || []).filter((event: any) =>
+        event.new_data?.event_type === 'rescheduled'
+        || (event.old_data?.session_id && event.new_data?.session_id && event.old_data.session_id !== event.new_data.session_id),
+      );
+      const sessionIds = [...new Set(transfers.flatMap((event: any) => {
+        const payload = event.new_data?.event_type === 'rescheduled' ? event.new_data : {
+          from_session_id: event.old_data?.session_id,
+          to_session_id: event.new_data?.session_id,
+        };
+        return [payload.from_session_id, payload.to_session_id].filter(Boolean);
+      }))];
+      const { data: sessions, error: sessionsError } = sessionIds.length
+        ? await supabase.from('schedule_sessions').select('id,start_time,class_type:class_types(name)').in('id', sessionIds)
+        : { data: [], error: null };
+      if (sessionsError) throw sessionsError;
+      const sessionById = new Map((sessions || []).map((session: any) => [session.id, session]));
+      return transfers.map((event: any) => {
+        const payload = event.new_data?.event_type === 'rescheduled' ? event.new_data : {
+          event_type: 'rescheduled',
+          from_booking_id: event.old_data?.id,
+          to_booking_id: event.new_data?.id,
+          from_session_id: event.old_data?.session_id,
+          to_session_id: event.new_data?.session_id,
+        };
+        return {
+          ...event,
+          new_data: payload,
+          from_session: sessionById.get(payload.from_session_id),
+          to_session: sessionById.get(payload.to_session_id),
+        };
+      });
+    }
+  });
+
+  const transferNotes = useMemo(() => {
+    const bookingById = new Map(bookings.map((booking: any) => [booking.id, booking]));
+    const notes = new Map<string, { direction: 'from' | 'to'; other?: any }>();
+    transferEvents.forEach((event: any) => {
+      const payload = event.new_data || {};
+      notes.set(payload.from_booking_id, { direction: 'from', other: bookingById.get(payload.to_booking_id) });
+      notes.set(payload.to_booking_id, { direction: 'to', other: bookingById.get(payload.from_booking_id) });
+    });
+    return notes;
+  }, [bookings, transferEvents]);
 
   // Загрузка доступных планов
   const { data: plans = [] } = useQuery({
@@ -354,24 +410,51 @@ export default function ClientDetail() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {bookings.map((booking: any) => (
-                      <div key={booking.id} className="flex justify-between items-center border-b pb-4 last:border-0 last:pb-0">
+                    {transferEvents.length > 0 ? (
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                        <div className="mb-2 flex items-center gap-2 text-sm font-semibold"><CalendarSync className="h-4 w-4" /> История перезаписей</div>
+                        <div className="space-y-2">
+                          {transferEvents.map((event: any) => (
+                            <div key={event.id} className="text-xs text-slate-600">
+                              <span className="font-medium">{format(parseISO(event.changed_at), 'dd.MM.yyyy HH:mm')}</span>{' · '}
+                              {event.from_session ? `${format(parseISO(event.from_session.start_time), 'dd.MM HH:mm')} ${event.from_session.class_type?.name || ''}` : 'Исходное занятие'}
+                              {' → '}
+                              {event.to_session ? `${format(parseISO(event.to_session.start_time), 'dd.MM HH:mm')} ${event.to_session.class_type?.name || ''}` : 'Новое занятие'}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                    {bookings.map((booking: any) => {
+                      const transfer = transferNotes.get(booking.id);
+                      return (
+                      <div key={booking.id} className="flex justify-between items-start gap-4 border-b pb-4 last:border-0 last:pb-0">
                         <div>
                           <div className="font-medium">{booking.session?.class_type?.name}</div>
                           <div className="text-sm text-muted-foreground">
                             {format(parseISO(booking.session?.start_time), 'dd MMMM yyyy HH:mm', { locale: ru })}
                           </div>
+                          {transfer ? (
+                            <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
+                              <CalendarSync className="h-3.5 w-3.5" />
+                              {transfer.direction === 'from' ? 'Перезаписан на' : 'Перезапись с'}{' '}
+                              {transfer.other?.session ? `${format(parseISO(transfer.other.session.start_time), 'dd.MM.yyyy HH:mm')} · ${transfer.other.session.class_type?.name || 'занятие'}` : 'другого занятия'}
+                            </div>
+                          ) : null}
                         </div>
                         <div className={`px-2 py-1 rounded-full text-xs font-medium ${
                           booking.status === 'completed' ? 'bg-green-100 text-green-700' :
                           booking.status === 'cancelled' ? 'bg-red-100 text-red-700' :
+                          booking.status === 'absent' ? 'bg-orange-100 text-orange-700' :
                           'bg-blue-100 text-blue-700'
                         }`}>
                           {booking.status === 'completed' ? 'Посетил' :
-                           booking.status === 'cancelled' ? 'Отмена' : 'Записан'}
+                           transfer?.direction === 'from' ? 'Перенесён' :
+                           booking.status === 'cancelled' ? 'Отмена' :
+                           booking.status === 'absent' ? 'Не пришёл' : 'Записан'}
                         </div>
                       </div>
-                    ))}
+                    )})}
                     {bookings.length === 0 && <div className="text-center text-muted-foreground">Нет истории посещений</div>}
                   </div>
                 </CardContent>

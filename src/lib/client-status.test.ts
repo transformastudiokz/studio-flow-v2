@@ -50,6 +50,19 @@ describe("client membership indicators", () => {
     expect(getClientStatusForBooking(baseStatus, "booking-2")?.isFirstVisit).toBe(false);
   });
 
+  it("uses a gray star for later bookings until the first completed visit", () => {
+    const baseStatus = {
+      ...getClientStatus([]),
+      firstBookingId: "booking-1",
+    };
+
+    expect(getClientStatusForBooking(baseStatus, "booking-2")?.isRepeatBeforeFirstVisit).toBe(true);
+    expect(
+      getClientStatusForBooking({ ...baseStatus, hasCompletedVisit: true }, "booking-2")
+        ?.isRepeatBeforeFirstVisit,
+    ).toBe(false);
+  });
+
   it("keeps the first trial booking green after its only visit was reserved", () => {
     const baseStatus = {
       ...getClientStatus([

@@ -39,6 +39,13 @@ export const ClientStatusIndicators = ({
         >
           <title>Первая запись клиента</title>
         </Star>
+      ) : status?.isRepeatBeforeFirstVisit ? (
+        <Star
+          className="h-4 w-4 fill-slate-300 text-slate-400"
+          aria-label="Повторная запись до первого посещения"
+        >
+          <title>Повторная запись: клиент ещё ни разу не пришёл</title>
+        </Star>
       ) : reserveSpace ? <span className="h-4 w-4" aria-hidden="true" /> : null}
       {membership ? (
         <span
@@ -60,6 +67,9 @@ export const ClientStatusLegend = ({ className }: { className?: string }) => (
   >
     <span className="inline-flex items-center gap-1">
       <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-500" /> Первая запись
+    </span>
+    <span className="inline-flex items-center gap-1">
+      <Star className="h-3.5 w-3.5 fill-slate-300 text-slate-400" /> Перезаписан, ещё не посещал
     </span>
     <span className="inline-flex items-center gap-1">
       <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" /> Абонемент действует

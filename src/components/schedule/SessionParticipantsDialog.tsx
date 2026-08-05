@@ -204,11 +204,11 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
       if (!target) throw new Error("Занятие не найдено");
       const occupiedTarget = target.bookings.filter((booking) => occupiesPlace(booking.status)).length;
       if (occupiedTarget >= target.capacity) throw new Error("На выбранном занятии уже нет свободных мест");
-      const { error } = await supabase
-        .from("bookings")
-        .update({ session_id: targetSessionId, status: "booked" })
-        .eq("id", transferBooking.id);
-      if (error) throw error;
+      await requestScheduleApi({
+        action: "transfer-booking",
+        bookingId: transferBooking.id,
+        targetSessionId,
+      });
     },
     onSuccess: async () => {
       setTransferBooking(null);
@@ -430,7 +430,7 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
 
       <Dialog open={Boolean(transferBooking)} onOpenChange={(nextOpen) => { if (!nextOpen) { setTransferBooking(null); setTargetSessionId(""); } }}>
         <DialogContent className="max-w-xl">
-          <DialogHeader><DialogTitle>Перенести запись</DialogTitle><DialogDescription>{transferBooking?.user ? `${transferBooking.user.first_name || ""} ${transferBooking.user.last_name || ""}`.trim() : "Клиент"} останется в истории, изменится только занятие.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>Перенести запись</DialogTitle><DialogDescription>Исходная запись {transferBooking?.user ? `${transferBooking.user.first_name || ""} ${transferBooking.user.last_name || ""}`.trim() : "клиента"} останется в истории, а на выбранное занятие будет создана новая.</DialogDescription></DialogHeader>
           <div className="space-y-4">
             {transferSessionsLoading ? <div className="flex justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div> : transferSessions.length === 0 ? <div className="rounded-lg bg-muted p-5 text-center text-sm text-muted-foreground">В ближайшие 60 дней нет доступных занятий</div> : (
               <div className="space-y-2"><Label>Новое занятие</Label><Select value={targetSessionId} onValueChange={setTargetSessionId}><SelectTrigger><SelectValue placeholder="Выбери дату и занятие" /></SelectTrigger><SelectContent className="max-h-72">{transferSessions.map((candidate) => { const candidateOccupied = candidate.bookings.filter((booking) => occupiesPlace(booking.status)).length; const isFull = candidateOccupied >= candidate.capacity; return <SelectItem key={candidate.id} value={candidate.id} disabled={isFull}>{format(parseISO(candidate.start_time), "EEE, dd MMM · HH:mm", { locale: ru })} — {candidate.class_type?.name || "Занятие"} · {normalizeRoom(candidate.room)} · {candidateOccupied}/{candidate.capacity}{isFull ? " · мест нет" : ""}</SelectItem>; })}</SelectContent></Select></div>

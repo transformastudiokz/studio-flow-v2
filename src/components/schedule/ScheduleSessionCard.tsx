@@ -60,6 +60,11 @@ export function ScheduleSessionCard({ session, compact = false, hasConflict = fa
                 <Star className="h-2.5 w-2.5 fill-amber-400 text-amber-500" />{session.firstBookingCount}
               </span>
             ) : null}
+            {(session.repeatBookingCount || 0) > 0 ? (
+              <span className="inline-flex shrink-0 items-center gap-px text-[9px] font-semibold text-slate-500" title={`Повторно записаны до первого посещения: ${session.repeatBookingCount}`}>
+                <Star className="h-2.5 w-2.5 fill-slate-300 text-slate-400" />{session.repeatBookingCount}
+              </span>
+            ) : null}
             <span className={cn("inline-flex shrink-0 items-center text-[9px] font-bold tabular-nums", isFull ? "text-red-700" : booked / Math.max(session.capacity, 1) >= 0.75 ? "text-amber-700" : "text-emerald-700")} title={`${booked} из ${session.capacity} мест занято`}>
               {booked}/{session.capacity}
             </span>
@@ -116,6 +121,11 @@ export function ScheduleSessionCard({ session, compact = false, hasConflict = fa
           {(session.firstBookingCount || 0) > 0 ? (
             <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-50 px-1 py-0.5 text-[9px] font-semibold text-amber-700" title={`Впервые записаны: ${session.firstBookingCount}`}>
               <Star className="h-2.5 w-2.5 fill-amber-400 text-amber-500" /> {session.firstBookingCount}
+            </span>
+          ) : null}
+          {(session.repeatBookingCount || 0) > 0 ? (
+            <span className="inline-flex items-center gap-0.5 rounded-full bg-slate-100 px-1 py-0.5 text-[9px] font-semibold text-slate-600" title={`Повторно записаны до первого посещения: ${session.repeatBookingCount}`}>
+              <Star className="h-2.5 w-2.5 fill-slate-300 text-slate-400" /> {session.repeatBookingCount}
             </span>
           ) : null}
           {isClosed || isCancelled ? (

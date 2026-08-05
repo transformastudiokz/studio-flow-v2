@@ -5,10 +5,12 @@ export type MembershipIndicator = "active" | "ending" | "inactive";
 
 export type ClientStatus = {
   isFirstVisit: boolean;
+  isRepeatBeforeFirstVisit: boolean;
   membership: MembershipIndicator;
   remainingVisits: number | null;
   firstBookingId: string | null;
   hasCurrentTrial: boolean;
+  hasCompletedVisit: boolean;
 };
 
 export type SubscriptionSummary = {
@@ -45,10 +47,12 @@ export const getClientStatus = (
   if (activeSubscriptions.length === 0) {
     return {
       isFirstVisit: false,
+      isRepeatBeforeFirstVisit: false,
       membership: "inactive",
       remainingVisits: 0,
       firstBookingId: null,
       hasCurrentTrial,
+      hasCompletedVisit: false,
     };
   }
 
@@ -67,11 +71,13 @@ export const getClientStatus = (
 
   return {
     isFirstVisit: false,
+    isRepeatBeforeFirstVisit: false,
     membership:
       endingRegularSubscription && !healthyRegularSubscription ? "ending" : "active",
     remainingVisits,
     firstBookingId: null,
     hasCurrentTrial,
+    hasCompletedVisit: false,
   };
 };
 
@@ -82,9 +88,13 @@ export const getClientStatusForBooking = (
   if (!status) return undefined;
 
   const isFirstVisit = status.firstBookingId === bookingId;
+  const isRepeatBeforeFirstVisit = Boolean(
+    status.firstBookingId && status.firstBookingId !== bookingId && !status.hasCompletedVisit,
+  );
   return {
     ...status,
     isFirstVisit,
+    isRepeatBeforeFirstVisit,
     membership: isFirstVisit && status.hasCurrentTrial ? ("active" as const) : status.membership,
   };
 };
@@ -104,7 +114,7 @@ export const fetchClientStatuses = async (userIds: string[]) => {
       .in("user_id", uniqueUserIds),
     supabase
       .from("bookings")
-      .select("id, user_id, created_at")
+      .select("id, user_id, status, created_at")
       .in("user_id", uniqueUserIds)
       .order("created_at", { ascending: true })
       .order("id", { ascending: true }),
@@ -121,10 +131,12 @@ export const fetchClientStatuses = async (userIds: string[]) => {
   }
 
   const firstBookingByUser = new Map<string, string>();
+  const completedVisitUsers = new Set<string>();
   for (const booking of bookingsResult.data || []) {
     if (!firstBookingByUser.has(booking.user_id)) {
       firstBookingByUser.set(booking.user_id, booking.id);
     }
+    if (booking.status === "completed") completedVisitUsers.add(booking.user_id);
   }
 
   for (const userId of uniqueUserIds) {
@@ -134,6 +146,7 @@ export const fetchClientStatuses = async (userIds: string[]) => {
       {
         ...status,
         firstBookingId: firstBookingByUser.get(userId) || null,
+        hasCompletedVisit: completedVisitUsers.has(userId),
       },
     );
   }

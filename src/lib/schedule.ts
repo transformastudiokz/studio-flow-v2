@@ -43,6 +43,7 @@ export type ScheduleSession = {
   bookings: ScheduleBooking[];
   onefit_bookings?: Array<{ id: string; client_name: string; source_status: string; is_active: boolean }>;
   firstBookingCount?: number;
+  repeatBookingCount?: number;
 };
 
 export const normalizeRoom = (room?: string | null): StudioRoom =>

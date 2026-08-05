@@ -110,6 +110,72 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ id: created.user.id, login: phone, temporaryPassword: password });
     }
 
+    if (action === "transfer-booking") {
+      const bookingId = String(req.body?.bookingId || "");
+      const targetSessionId = String(req.body?.targetSessionId || "");
+      if (!bookingId || !targetSessionId) return res.status(400).json({ error: "Не выбрана запись или новое занятие" });
+
+      const { data: source, error: sourceError } = await adminClient!
+        .from("bookings")
+        .select("id,user_id,session_id,status")
+        .eq("id", bookingId)
+        .single();
+      if (sourceError || !source) throw sourceError || new Error("Исходная запись не найдена");
+      if (source.session_id === targetSessionId) return res.status(400).json({ error: "Выбрано то же занятие" });
+      if (source.status !== "booked") return res.status(409).json({ error: "Перенести можно только действующую запись" });
+
+      const { data: target, error: targetError } = await adminClient!
+        .from("schedule_sessions")
+        .select("id,capacity,booking_status,is_cancelled,bookings:bookings(id,status),onefit_bookings:onefit_bookings(id,is_active)")
+        .eq("id", targetSessionId)
+        .single();
+      if (targetError || !target) throw targetError || new Error("Новое занятие не найдено");
+      if (target.booking_status !== "open" || target.is_cancelled) return res.status(409).json({ error: "Запись на выбранное занятие закрыта" });
+      const occupied = (target.bookings || []).filter((booking: { status: string }) => !["cancelled", "late_cancel", "absent"].includes(booking.status)).length
+        + (target.onefit_bookings || []).filter((booking: { is_active: boolean }) => booking.is_active).length;
+      if (occupied >= target.capacity) return res.status(409).json({ error: "На выбранном занятии уже нет свободных мест" });
+
+      const { data: duplicates, error: duplicateError } = await adminClient!
+        .from("bookings")
+        .select("id,status")
+        .eq("user_id", source.user_id)
+        .eq("session_id", targetSessionId)
+        .not("status", "in", "(cancelled,late_cancel,absent)")
+        .limit(1);
+      if (duplicateError) throw duplicateError;
+      if (duplicates?.length) return res.status(409).json({ error: "Клиент уже записан на выбранное занятие" });
+
+      const { error: cancelError } = await adminClient!.from("bookings").update({ status: "cancelled" }).eq("id", source.id);
+      if (cancelError) throw cancelError;
+      const { data: createdBooking, error: insertError } = await adminClient!
+        .from("bookings")
+        .insert({ session_id: targetSessionId, user_id: source.user_id, status: "booked" })
+        .select("id")
+        .single();
+      if (insertError || !createdBooking) {
+        await adminClient!.from("bookings").update({ status: source.status }).eq("id", source.id);
+        throw insertError || new Error("Не удалось создать новую запись");
+      }
+
+      const transferData = {
+        event_type: "rescheduled",
+        from_booking_id: source.id,
+        to_booking_id: createdBooking.id,
+        from_session_id: source.session_id,
+        to_session_id: targetSessionId,
+      };
+      const { error: logError } = await adminClient!.from("booking_change_log").insert({
+        booking_id: source.id,
+        session_id: source.session_id,
+        user_id: source.user_id,
+        action: "updated",
+        changed_by: staff.id,
+        new_data: transferData,
+      });
+      if (logError) console.error("Transfer history log failed", logError);
+      return res.status(200).json({ bookingId: createdBooking.id });
+    }
+
     return res.status(400).json({ error: "Неизвестное действие" });
   } catch (error) {
     console.error("Schedule API error", error);
