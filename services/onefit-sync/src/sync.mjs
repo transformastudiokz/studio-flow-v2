@@ -45,15 +45,71 @@ async function scrapeToday() {
     const page = context.pages()[0] || await context.newPage();
     await page.goto(config.onefitUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
     await page.getByText("В очереди", { exact: true }).waitFor({ timeout: 30_000 });
-    const snapshot = await page.evaluate(() => {
-      const heading = [...document.querySelectorAll("p")].find((node) => node.textContent?.trim() === "В очереди");
-      const section = heading?.parentElement?.parentElement?.parentElement;
-      const declared = Number.parseInt(heading?.parentElement?.parentElement?.querySelectorAll("p")[1]?.textContent || "", 10);
-      const cards = [...(section?.querySelectorAll("ul li") || [])].map((card) =>
-        [...card.querySelectorAll("p")].map((field) => field.textContent?.trim() || ""));
-      return { todayVisible: [...document.querySelectorAll("p")].some((node) => node.textContent?.trim() === "Сегодня"), declared, cards };
-    });
-    return parseQueuedSnapshot(snapshot);
+    let lastError;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const snapshot = await page.evaluate(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const findSection = () => {
+          const heading = [...document.querySelectorAll("p")].find((node) => node.textContent?.trim() === "В очереди");
+          return { heading, section: heading?.parentElement?.parentElement?.parentElement };
+        };
+        const { heading, section } = findSection();
+        const declared = Number.parseInt(heading?.parentElement?.parentElement?.querySelectorAll("p")[1]?.textContent || "", 10);
+        const collected = new Map();
+
+        let scroller = section;
+        while (scroller && scroller !== document.body) {
+          const style = getComputedStyle(scroller);
+          if (scroller.scrollHeight > scroller.clientHeight + 2 && ["auto", "scroll"].includes(style.overflowY)) break;
+          scroller = scroller.parentElement;
+        }
+        if (!scroller || scroller === document.body) scroller = document.scrollingElement;
+
+        const collectVisibleCards = () => {
+          const currentSection = findSection().section;
+          const frameCounts = new Map();
+          for (const card of currentSection?.querySelectorAll("ul li") || []) {
+            const fields = [...card.querySelectorAll("p")].map((field) => field.textContent?.trim() || "");
+            const key = JSON.stringify(fields);
+            frameCounts.set(key, (frameCounts.get(key) || 0) + 1);
+          }
+          for (const [key, count] of frameCounts) {
+            collected.set(key, Math.max(collected.get(key) || 0, count));
+          }
+        };
+
+        const step = Math.max(Math.floor((scroller?.clientHeight || 500) * 0.7), 120);
+        for (let position = 0, passes = 0; passes < 30; position += step, passes += 1) {
+          if (scroller) {
+            scroller.scrollTop = Math.min(position, Math.max(scroller.scrollHeight - scroller.clientHeight, 0));
+            scroller.dispatchEvent(new Event("scroll", { bubbles: true }));
+          }
+          await sleep(180);
+          collectVisibleCards();
+          const parsedCount = [...collected.values()].reduce((sum, count) => sum + count, 0);
+          const atBottom = !scroller || scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 2;
+          if (parsedCount >= declared || atBottom) break;
+        }
+        if (scroller) scroller.scrollTop = 0;
+
+        const cards = [];
+        for (const [key, count] of collected) {
+          for (let index = 0; index < count; index += 1) cards.push(JSON.parse(key));
+        }
+        return {
+          todayVisible: [...document.querySelectorAll("p")].some((node) => node.textContent?.trim() === "Сегодня"),
+          declared,
+          cards,
+        };
+      });
+      try {
+        return parseQueuedSnapshot(snapshot);
+      } catch (error) {
+        lastError = error;
+        if (attempt < 2) await page.waitForTimeout(1_500);
+      }
+    }
+    throw lastError;
   } finally {
     await context.close();
   }
