@@ -41,6 +41,7 @@ export type ScheduleSession = {
   class_type: { id: string; name: string; color: string | null; duration_min?: number | null } | null;
   coach: { id: string; name: string } | null;
   bookings: ScheduleBooking[];
+  onefit_bookings?: Array<{ id: string; client_name: string; source_status: string; is_active: boolean }>;
   firstBookingCount?: number;
 };
 
@@ -61,8 +62,8 @@ export const occupiesPlace = (status: string) =>
 export const activeBookings = (session: Pick<ScheduleSession, "bookings">) =>
   (session.bookings || []).filter((booking) => occupiesPlace(booking.status));
 
-export const sessionBookingCount = (session: Pick<ScheduleSession, "bookings">) =>
-  activeBookings(session).length;
+export const sessionBookingCount = (session: Pick<ScheduleSession, "bookings" | "onefit_bookings">) =>
+  activeBookings(session).length + (session.onefit_bookings || []).filter((booking) => booking.is_active).length;
 
 export const resolveAvailableRoom = (
   requestedRoom: string,

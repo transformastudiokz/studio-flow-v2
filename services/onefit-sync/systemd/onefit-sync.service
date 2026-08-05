@@ -1,0 +1,19 @@
+[Unit]
+Description=OneFit to CRM scheduled sync
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=onefit-sync
+Group=onefit-sync
+WorkingDirectory=/opt/onefit-sync
+EnvironmentFile=/etc/onefit-sync.env
+ExecStart=/usr/bin/node /opt/onefit-sync/src/sync.mjs
+TimeoutStartSec=180
+MemoryMax=650M
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

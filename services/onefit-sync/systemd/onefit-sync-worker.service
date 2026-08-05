@@ -1,0 +1,20 @@
+[Unit]
+Description=OneFit manual sync request worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=onefit-sync
+Group=onefit-sync
+WorkingDirectory=/opt/onefit-sync
+EnvironmentFile=/etc/onefit-sync.env
+ExecStart=/usr/bin/node /opt/onefit-sync/src/worker.mjs
+Restart=on-failure
+RestartSec=10
+MemoryMax=700M
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

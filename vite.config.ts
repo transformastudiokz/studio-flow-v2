@@ -11,16 +11,8 @@ export default defineConfig({
     },
   },
   build: {
-    sourcemap: false, // <--- ДОЛЖНО БЫТЬ false
-    chunkSizeWarningLimit: 1000,
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          vendor: ['react', 'react-router-dom', 'react-dom'],
-          ui: ['@radix-ui/react-dialog', '@radix-ui/react-slot', 'lucide-react']
-        }
-      }
-    }
+    sourcemap: false,
+    chunkSizeWarningLimit: 1500,
   },
 })
 // Force update vercel 1

@@ -81,7 +81,8 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
           booking_status, booking_closed_reason, is_cancelled,
           class_type:class_types(id,name,color,duration_min),
           coach:coaches(id,name),
-          bookings:bookings(id,status,user_id,created_at,user:profiles(id,first_name,last_name,phone,email))
+          bookings:bookings(id,status,user_id,created_at,user:profiles(id,first_name,last_name,phone,email)),
+          onefit_bookings:onefit_bookings(id,client_name,source_status,is_active)
         `)
         .eq("id", session!.id)
         .single();
@@ -213,7 +214,8 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
   const ensureCanBook = () => {
     if (!details) throw new Error("Занятие не загружено");
     if (details.booking_status !== "open") throw new Error(details.booking_status === "cancelled" ? "Занятие отменено" : "Сначала открой запись на занятие");
-    const occupied = details.bookings.filter((booking) => occupiesPlace(booking.status)).length;
+    const occupied = details.bookings.filter((booking) => occupiesPlace(booking.status)).length
+      + (details.onefit_bookings || []).filter((booking) => booking.is_active).length;
     if (occupied >= details.capacity) throw new Error("Свободных мест нет");
   };
 
@@ -266,7 +268,8 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
 
   if (!session) return null;
   const current = details || session;
-  const occupied = (details?.bookings || session.bookings || []).filter((booking) => occupiesPlace(booking.status)).length;
+  const onefitParticipants = (details?.onefit_bookings || session.onefit_bookings || []).filter((booking) => booking.is_active);
+  const occupied = (details?.bookings || session.bookings || []).filter((booking) => occupiesPlace(booking.status)).length + onefitParticipants.length;
   const selectedClient = clientOptions.find((client) => client.id === selectedClientId);
   const activeParticipants = (details?.bookings || []).filter((booking) => !["cancelled", "late_cancel"].includes(booking.status));
 
@@ -351,7 +354,7 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
           <ScrollArea className="min-h-0 flex-1">
             {isLoading ? (
               <div className="flex justify-center p-12"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
-            ) : activeParticipants.length === 0 ? (
+            ) : activeParticipants.length === 0 && onefitParticipants.length === 0 ? (
               <div className="p-12 text-center text-sm text-muted-foreground">На занятие пока никто не записан</div>
             ) : (
               <div className="divide-y">
@@ -381,6 +384,30 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
                     </div>
                   );
                 })}
+                {onefitParticipants.length > 0 ? (
+                  <div className="border-t-4 border-sky-100 bg-slate-50/80">
+                    <div className="flex items-center gap-2 px-5 py-2 text-[11px] font-semibold uppercase tracking-wide text-sky-700">
+                      <span className="h-2.5 w-2.5 rounded-full bg-sky-500" /> OneFit · {onefitParticipants.length}
+                    </div>
+                    <div className="divide-y divide-slate-200/70">
+                      {onefitParticipants.map((participant) => (
+                        <div key={participant.id} className="flex min-h-14 items-center gap-3 px-5 py-2.5 text-slate-600">
+                          <div className="flex w-[62px] shrink-0 items-center gap-1.5" aria-label="Клиент OneFit">
+                            <span className="h-3 w-3 rounded-full bg-sky-500 ring-2 ring-sky-100" />
+                            <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-bold text-sky-700">1FIT</span>
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-semibold">{participant.client_name}</p>
+                            <p className="text-xs text-slate-400">Запись через OneFit</p>
+                          </div>
+                          <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[11px] font-semibold text-sky-700">
+                            {participant.source_status === "confirmed" ? "Подтверждён" : "В очереди"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             )}
           </ScrollArea>

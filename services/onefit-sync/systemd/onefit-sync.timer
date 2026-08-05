@@ -1,0 +1,12 @@
+[Unit]
+Description=Run OneFit sync three times a day
+
+[Timer]
+OnCalendar=2026-08-05 14:00:00 Asia/Almaty
+OnCalendar=2026-08-05 20:00:00 Asia/Almaty
+Persistent=true
+RandomizedDelaySec=120
+Unit=onefit-sync.service
+
+[Install]
+WantedBy=timers.target

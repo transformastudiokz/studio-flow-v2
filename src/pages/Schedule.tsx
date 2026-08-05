@@ -57,7 +57,8 @@ export default function Schedule() {
           booking_status, booking_closed_reason, is_cancelled,
           class_type:class_types(id,name,color,duration_min),
           coach:coaches(id,name),
-          bookings:bookings(id,status,user_id,created_at,user:profiles(id,first_name,last_name,phone,email))
+          bookings:bookings(id,status,user_id,created_at,user:profiles(id,first_name,last_name,phone,email)),
+          onefit_bookings:onefit_bookings(id,client_name,source_status,is_active)
         `)
         .gte("start_time", weekStart.toISOString())
         .lte("start_time", weekEnd.toISOString())

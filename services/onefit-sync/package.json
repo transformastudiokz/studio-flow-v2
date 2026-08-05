@@ -1,0 +1,13 @@
+{
+  "name": "onefit-crm-sync",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "sync": "node src/sync.mjs",
+    "worker": "node src/worker.mjs"
+  },
+  "dependencies": {
+    "playwright-core": "1.55.0"
+  }
+}
