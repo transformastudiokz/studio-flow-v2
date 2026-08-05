@@ -28,7 +28,7 @@ async function acquireLock() {
       const storedPid = Number.parseInt(await fs.readFile(lockPath, "utf8").catch(() => "0"), 10);
       try { if (storedPid > 1) process.kill(storedPid, 0); }
       catch { await fs.unlink(lockPath).catch(() => {}); return acquireLock(); }
-      throw new Error("Sync is already running");
+      return null;
     }
     throw error;
   }
@@ -57,11 +57,21 @@ async function scrapeToday() {
         const declared = Number.parseInt(heading?.parentElement?.parentElement?.querySelectorAll("p")[1]?.textContent || "", 10);
         const collected = new Map();
 
-        let scroller = section;
-        while (scroller && scroller !== document.body) {
-          const style = getComputedStyle(scroller);
-          if (scroller.scrollHeight > scroller.clientHeight + 2 && ["auto", "scroll"].includes(style.overflowY)) break;
-          scroller = scroller.parentElement;
+        // OneFit renders visits inside a fixed-height, independently
+        // scrollable <ul>. Looking only at section ancestors silently capped
+        // snapshots at the first ten cards once the list grew beyond 10.
+        let scroller = [section, ...section.querySelectorAll("*")].find((element) => {
+          const style = getComputedStyle(element);
+          return element.scrollHeight > element.clientHeight + 2 &&
+            ["auto", "scroll"].includes(style.overflowY);
+        });
+        if (!scroller) {
+          scroller = section;
+          while (scroller && scroller !== document.body) {
+            const style = getComputedStyle(scroller);
+            if (scroller.scrollHeight > scroller.clientHeight + 2 && ["auto", "scroll"].includes(style.overflowY)) break;
+            scroller = scroller.parentElement;
+          }
         }
         if (!scroller || scroller === document.body) scroller = document.scrollingElement;
 
@@ -141,6 +151,10 @@ const localTime = (iso) => {
 async function sync() {
   if (kazakhstanDate() !== config.targetDate) throw new Error("OneFit sync target must be today in Kazakhstan");
   const lock = await acquireLock();
+  if (!lock) {
+    console.log(JSON.stringify({ ok: true, skipped: "sync_already_running" }));
+    return;
+  }
   let run;
   try {
     run = requestedRunId ? await claimRun(requestedRunId) : await createRun(triggerType);
