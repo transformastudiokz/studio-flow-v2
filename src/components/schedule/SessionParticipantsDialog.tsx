@@ -384,6 +384,7 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild><Button size="icon" variant="ghost" className="col-start-3 row-start-1 h-11 w-11 justify-self-center sm:col-start-5 sm:h-8 sm:w-8" aria-label={`Действия с записью: ${client?.first_name || "клиент"}`}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          <DropdownMenuItem className="sm:hidden" disabled={!client?.phone} onClick={() => openWhatsApp(client)}><MessageCircle className="mr-2 h-4 w-4" />Написать в WhatsApp</DropdownMenuItem>
                           <DropdownMenuItem onClick={() => { setTransferBooking(booking); setTargetSessionId(""); }}><CalendarSync className="mr-2 h-4 w-4" />Перенести</DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem className="text-red-600" onClick={() => setDeleteBooking(booking)}><Trash2 className="mr-2 h-4 w-4" />Удалить запись</DropdownMenuItem>
