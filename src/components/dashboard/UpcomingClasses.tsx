@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { differenceInMinutes, endOfDay, format, parseISO, startOfDay } from "date-fns";
-import { Clock, Loader2, MapPin, MessageCircle, Users } from "lucide-react";
+import { ArrowRight, Clock, Loader2, MapPin, MessageCircle, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -157,9 +157,14 @@ export const UpcomingClasses = () => {
 
   return (
     <div className="flex h-full flex-col overflow-hidden rounded-xl border border-border/50 bg-card shadow-sm animate-in fade-in">
-      <div className="border-b border-border p-5">
-        <h3 className="text-lg font-semibold">Занятия сегодня</h3>
-        <p className="mt-1 text-xs text-muted-foreground">Нажмите на занятие, чтобы открыть список клиентов</p>
+      <div className="flex items-center justify-between gap-4 border-b border-border p-5">
+        <div>
+          <h3 className="text-lg font-semibold">Ближайшие занятия</h3>
+          <p className="mt-1 text-xs text-muted-foreground">Нажмите на занятие, чтобы открыть список клиентов</p>
+        </div>
+        <Button asChild variant="ghost" size="sm" className="shrink-0 text-primary">
+          <Link to="/schedule">Все занятия <ArrowRight className="ml-1.5 h-4 w-4" /></Link>
+        </Button>
       </div>
       <div className="max-h-[420px] divide-y divide-border overflow-y-auto">
         {isLoading ? (
