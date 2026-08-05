@@ -38,6 +38,7 @@ async function scrapeToday() {
   const context = await chromium.launchPersistentContext(config.profileDir, {
     executablePath: config.chromiumPath,
     headless: true,
+    viewport: { width: 1440, height: 3000 },
     args: ["--disable-dev-shm-usage", "--disable-gpu"],
     env: { HOME: "/var/lib/onefit-sync", LANG: "ru_RU.UTF-8", PATH: "/usr/bin:/bin" },
   });
@@ -46,7 +47,7 @@ async function scrapeToday() {
     await page.goto(config.onefitUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
     await page.getByText("В очереди", { exact: true }).waitFor({ timeout: 30_000 });
     let lastError;
-    for (let attempt = 0; attempt < 3; attempt += 1) {
+    for (let attempt = 0; attempt < 10; attempt += 1) {
       const snapshot = await page.evaluate(async () => {
         const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         const findSection = () => {
@@ -106,7 +107,11 @@ async function scrapeToday() {
         return parseQueuedSnapshot(snapshot);
       } catch (error) {
         lastError = error;
-        if (attempt < 2) await page.waitForTimeout(1_500);
+        if (attempt < 9) {
+          await page.reload({ waitUntil: "domcontentloaded", timeout: 60_000 });
+          await page.getByText("В очереди", { exact: true }).waitFor({ timeout: 30_000 });
+          await page.waitForTimeout(3_000);
+        }
       }
     }
     throw lastError;
