@@ -2,10 +2,11 @@
 Description=Run OneFit sync every 30 minutes during studio hours
 
 [Timer]
-# The VDS runs in Europe/Moscow (UTC+3); 07:00-19:00 server time is
-# 09:00-21:00 studio time (Kazakhstan, UTC+5).
-OnCalendar=*-*-* 07..18:00,30:00
-OnCalendar=*-*-* 19:00:00
+# The VDS runs in Europe/Moscow (UTC+3). Studio time is Kazakhstan
+# (UTC+5), so 05:30-20:00 on the server is 07:30-22:00 at the studio.
+OnCalendar=*-*-* 05:30:00
+OnCalendar=*-*-* 06..19:00,30:00
+OnCalendar=*-*-* 20:00:00
 Persistent=true
 AccuracySec=1min
 RandomizedDelaySec=10
