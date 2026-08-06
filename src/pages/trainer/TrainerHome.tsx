@@ -27,39 +27,24 @@ const TrainerHome = () => {
       if (profileError || !profile) throw new Error("Карточка сотрудника не найдена.");
 
       const now = new Date();
-      const { data: monthSessionsResult, error: sessionsError } = await supabase.rpc("get_trainer_schedule_v2", {
-        p_from: startOfMonth(now).toISOString(),
-        p_to: endOfMonth(now).toISOString(),
-      });
+      const range = { p_from: startOfMonth(now).toISOString(), p_to: endOfMonth(now).toISOString() };
+      const [{ data: monthSessionsResult, error: sessionsError }, { data: metricsResult, error: metricsError }] = await Promise.all([
+        supabase.rpc("get_trainer_schedule_v2", range),
+        supabase.rpc("get_trainer_home_metrics", range),
+      ]);
       if (sessionsError) throw sessionsError;
+      if (metricsError) throw metricsError;
 
       const monthSessions = (monthSessionsResult || []) as TrainerScheduleSession[];
       const todaySessions = monthSessions.filter((session) => isSameDay(parseISO(session.start_time), now));
-      const conductedSessions = monthSessions.filter((session) =>
-        session.booking_status !== "cancelled" && parseISO(session.end_time).getTime() <= now.getTime());
-      const conductedIds = conductedSessions.map((session) => session.id);
-
-      let confirmedOnefit = 0;
-      if (conductedIds.length > 0) {
-        const { data: onefitRows, error: onefitError } = await supabase
-          .from("onefit_bookings")
-          .select("session_id,source_status,is_active")
-          .in("session_id", conductedIds)
-          .eq("source_status", "confirmed")
-          .eq("is_active", true);
-        if (onefitError) throw onefitError;
-        confirmedOnefit = (onefitRows || []).length;
-      }
-
-      const totalClients = conductedSessions.reduce((sum, session) => sum + count(session.completed_count), 0) + confirmedOnefit;
-      const totalStars = conductedSessions.reduce((sum, session) => sum + count(session.first_booking_count), 0);
+      const metrics = metricsResult?.[0] || { total_sessions: 0, total_clients: 0, total_stars: 0 };
 
       return {
         profile,
         todaySessions,
-        totalClients,
-        totalSessions: conductedSessions.length,
-        totalStars,
+        totalClients: count(metrics.total_clients),
+        totalSessions: count(metrics.total_sessions),
+        totalStars: count(metrics.total_stars),
       };
     },
     refetchInterval: 30_000,
