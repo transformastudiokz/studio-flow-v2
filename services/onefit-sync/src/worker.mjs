@@ -8,8 +8,10 @@ const kazakhstanDate = () => new Date(Date.now() + 5 * 60 * 60 * 1000).toISOStri
 const execute = (runId) => new Promise((resolve) => {
   const args = [new URL("./sync-range.mjs", import.meta.url).pathname];
   args.push("--manual", "--run-id", runId);
-  const child = spawn(process.execPath, args, { stdio: "inherit", env: process.env });
-  const timer = setTimeout(() => child.kill("SIGKILL"), 180_000);
+  const child = spawn(process.execPath, args, { stdio: "inherit", env: process.env, detached: true });
+  const timer = setTimeout(() => {
+    try { process.kill(-child.pid, "SIGKILL"); } catch {}
+  }, 900_000);
   child.once("exit", (code) => { clearTimeout(timer); resolve(code); });
 });
 

@@ -10,5 +10,7 @@ export const config = {
   profileDir: process.env.ONEFIT_PROFILE_DIR || "/var/lib/onefit-sync/browser-profile",
   chromiumPath: process.env.CHROMIUM_PATH || "/usr/bin/chromium-browser",
   targetDate: process.env.ONEFIT_TARGET_DATE || new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString().slice(0, 10),
+  onefitEmail: process.env.ONEFIT_EMAIL?.trim() || "",
+  onefitPassword: process.env.ONEFIT_PASSWORD || "",
   onefitUrl: "https://erp.1fit.app/",
 };

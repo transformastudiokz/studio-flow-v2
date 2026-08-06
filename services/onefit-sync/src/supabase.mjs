@@ -7,8 +7,10 @@ const headers = {
 };
 
 export async function rest(path, options = {}) {
+  const timeoutSignal = AbortSignal.timeout(30_000);
   const response = await fetch(`${config.supabaseUrl}/rest/v1/${path}`, {
     ...options,
+    signal: options.signal || timeoutSignal,
     headers: { ...headers, ...(options.headers || {}) },
   });
   if (!response.ok) {

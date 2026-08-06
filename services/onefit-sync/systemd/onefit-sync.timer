@@ -1,10 +1,13 @@
 [Unit]
-Description=Run OneFit sync every 30 minutes during studio hours
+Description=Run OneFit sync hourly during studio hours
 
 [Timer]
-OnCalendar=*-*-* 07..22:00,30:00 Asia/Almaty
+# The VDS runs in Europe/Moscow (UTC+3); 07:00-19:00 server time is
+# 09:00-21:00 studio time (Kazakhstan, UTC+5).
+OnCalendar=*-*-* 07..19:00:00
 Persistent=true
-RandomizedDelaySec=15
+AccuracySec=1min
+RandomizedDelaySec=10
 Unit=onefit-sync.service
 
 [Install]

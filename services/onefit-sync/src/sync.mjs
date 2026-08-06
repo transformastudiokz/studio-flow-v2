@@ -46,6 +46,19 @@ async function scrapeToday() {
   try {
     const page = context.pages()[0] || await context.newPage();
     await page.goto(config.onefitUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
+
+    const ensureAuthenticated = async () => {
+      if (!page.url().includes("/login")) return;
+      if (!config.onefitEmail || !config.onefitPassword) {
+        throw new Error("OneFit authentication expired: ONEFIT_EMAIL and ONEFIT_PASSWORD are required for autonomous recovery");
+      }
+      await page.getByLabel("Эл. почта").fill(config.onefitEmail);
+      await page.getByLabel("Пароль").fill(config.onefitPassword);
+      await page.getByRole("button", { name: "Войти в аккаунт" }).click();
+      await page.waitForURL((url) => !url.pathname.includes("/login"), { timeout: 60_000 });
+      await page.waitForLoadState("domcontentloaded");
+    };
+    await ensureAuthenticated();
     const target = new Date(`${config.targetDate}T12:00:00+05:00`);
     const today = kazakhstanDate();
     const weekdays = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
@@ -55,8 +68,8 @@ async function scrapeToday() {
     const targetPattern = new RegExp(`^${targetLabel.replace(" ", "\\s*")}$`);
 
     const selectTargetDate = async () => {
-      await page.getByText("В очереди", { exact: true }).waitFor({ timeout: 30_000 });
-      await page.getByText("Подтвердившие", { exact: true }).waitFor({ timeout: 30_000 });
+      await ensureAuthenticated();
+      await page.locator("li").filter({ hasText: /^(Сегодня|Пн|Вт|Ср|Чт|Пт|Сб|Вс)\s*\d+$/ }).first().waitFor({ timeout: 30_000 });
       const selectedToday = page.locator("li").filter({ hasText: new RegExp(`^Сегодня\\s*${new Date(`${today}T12:00:00+05:00`).getUTCDate()}$`) });
       const selectedClass = await selectedToday.getAttribute("class");
       let targetDateItem = page.locator("li").filter({ hasText: targetPattern });
@@ -87,6 +100,7 @@ async function scrapeToday() {
           return { heading, section: heading?.parentElement?.parentElement?.parentElement };
         };
         const { heading, section } = findSection();
+        if (!heading || !section) return { todayVisible: true, declared: 0, cards: [] };
         const declared = Number.parseInt(heading?.parentElement?.parentElement?.querySelectorAll("p")[1]?.textContent || "", 10);
         const collected = new Map();
 
