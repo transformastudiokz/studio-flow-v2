@@ -14,7 +14,7 @@ import { useCurrentProfile } from "@/hooks/use-current-profile";
 import { toast } from "sonner";
 
 const roleLabel: Record<string, string> = { owner: "Управляющий", admin: "Администратор", trainer: "Тренер" };
-const emptyForm = { id: "", firstName: "", lastName: "", email: "", phone: "", role: "admin", position: "Администратор" };
+const emptyForm = { id: "", firstName: "", lastName: "", middleName: "", email: "", phone: "", role: "admin", position: "Администратор" };
 
 export default function Staff() {
   const queryClient = useQueryClient();
@@ -27,7 +27,7 @@ export default function Staff() {
     queryKey: ["staff"],
     enabled: current?.role === "owner",
     queryFn: async () => {
-      const { data, error } = await supabase.from("profiles").select("id,first_name,last_name,phone,email,role,position,is_active,must_change_password").in("role", ["owner", "admin", "trainer"]).order("first_name");
+      const { data, error } = await supabase.from("profiles").select("id,first_name,last_name,middle_name,phone,email,role,position,is_active,must_change_password").in("role", ["owner", "admin", "trainer"]).order("first_name");
       if (error) throw error;
       return data || [];
     },
@@ -43,11 +43,11 @@ export default function Staff() {
 
   const openCreate = () => { setForm(emptyForm); setDialogOpen(true); };
   const openEdit = (person: any) => {
-    setForm({ id: person.id, firstName: person.first_name || "", lastName: person.last_name || "", email: person.email || "", phone: person.phone || "", role: person.role === "owner" ? "owner" : person.role, position: person.position || roleLabel[person.role] || "" });
+    setForm({ id: person.id, firstName: person.first_name || "", lastName: person.last_name || "", middleName: person.middle_name || "", email: person.email || "", phone: person.phone || "", role: person.role === "owner" ? "owner" : person.role, position: person.position || roleLabel[person.role] || "" });
     setDialogOpen(true);
   };
   const save = async () => {
-    if (!form.firstName.trim() || !form.email.trim() || form.phone.replace(/\D/g, "").length < 10) return toast.error("Заполни имя, email и корректный телефон");
+    if (!form.firstName.trim() || !form.lastName.trim() || !form.email.trim() || form.phone.replace(/\D/g, "").length < 10) return toast.error("Заполни имя, фамилию, email и корректный телефон");
     setSaving(true);
     try {
       await request({ action: form.id ? "update" : "create", userId: form.id || undefined, ...form });
@@ -74,6 +74,23 @@ export default function Staff() {
     <Card className="overflow-hidden"><div className="hidden grid-cols-[1.4fr_1fr_1fr_1fr_1.3fr_120px_48px] gap-4 border-b bg-muted/40 px-5 py-3 text-xs font-semibold text-muted-foreground lg:grid"><span>Сотрудник</span><span>Должность</span><span>Роль</span><span>Телефон</span><span>Email-логин</span><span>Статус</span><span /></div>
       {isLoading ? <div className="flex justify-center p-12"><Loader2 className="animate-spin" /></div> : data.length === 0 ? <div className="p-12 text-center text-muted-foreground"><UserRoundCog className="mx-auto mb-3 h-9 w-9" />Сотрудники пока не добавлены</div> : data.map((person: any) => <div key={person.id} className="grid gap-2 border-b px-5 py-4 text-sm lg:grid-cols-[1.4fr_1fr_1fr_1fr_1.3fr_120px_48px] lg:items-center"><span className="font-semibold">{`${person.first_name || ""} ${person.last_name || ""}`.trim() || "Без имени"}{person.id === current?.id && <Badge variant="outline" className="ml-2">Вы</Badge>}</span><span>{person.position || roleLabel[person.role]}</span><span><Badge variant={person.role === "owner" ? "default" : "secondary"}>{roleLabel[person.role] || person.role}</Badge></span><span>{person.phone || "—"}</span><span className="truncate">{person.email || "—"}</span><span>{!person.is_active ? <Badge variant="destructive">Отключён</Badge> : person.must_change_password ? <Badge variant="outline">Первый вход</Badge> : <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">Активен</Badge>}</span><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onClick={() => openEdit(person)}>Редактировать</DropdownMenuItem><DropdownMenuItem onClick={async () => { try { await request({ action: "reset-password", userId: person.id }); toast.success("Временный пароль сброшен. При входе сотрудник задаст новый."); } catch (error) { toast.error(error instanceof Error ? error.message : "Ошибка"); } }}>Сбросить пароль</DropdownMenuItem><DropdownMenuItem onClick={() => copyAccess(person)}>Скопировать данные для входа</DropdownMenuItem><DropdownMenuItem disabled={person.id === current?.id} onClick={async () => { try { await request({ action: "set-active", userId: person.id, active: !person.is_active }); await queryClient.invalidateQueries({ queryKey: ["staff"] }); toast.success(person.is_active ? "Доступ отключён" : "Доступ включён"); } catch (error) { toast.error(error instanceof Error ? error.message : "Ошибка"); } }}>{person.is_active ? "Отключить доступ" : "Включить доступ"}</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div>)}</Card>
 
-    <Dialog open={dialogOpen} onOpenChange={setDialogOpen}><DialogContent><DialogHeader><DialogTitle>{form.id ? "Редактировать сотрудника" : "Новый сотрудник"}</DialogTitle><DialogDescription>{form.id ? "Изменения обновят карточку и логин сотрудника." : "Система создаст карточку и учётную запись для входа. При первом входе сотрудник задаст собственный пароль."}</DialogDescription></DialogHeader><div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label>Имя</Label><Input value={form.firstName} onChange={e => setForm({ ...form, firstName: e.target.value })} /></div><div className="space-y-2"><Label>Фамилия и отчество</Label><Input value={form.lastName} onChange={e => setForm({ ...form, lastName: e.target.value })} /></div><div className="space-y-2 sm:col-span-2"><Label>Email-логин</Label><Input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></div><div className="space-y-2"><Label>Телефон</Label><Input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} /></div><div className="space-y-2"><Label>Роль доступа</Label><Select value={form.role} disabled={form.id === current?.id} onValueChange={value => setForm({ ...form, role: value, position: form.id ? form.position : value === "trainer" ? "Тренер" : value === "owner" ? "Управляющий" : "Администратор" })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="owner">Управляющий</SelectItem><SelectItem value="admin">Администратор</SelectItem><SelectItem value="trainer">Тренер</SelectItem></SelectContent></Select></div><div className="space-y-2 sm:col-span-2"><Label>Должность</Label><Input value={form.position} onChange={e => setForm({ ...form, position: e.target.value })} placeholder="Например: Ассистент руководителя" /></div></div><Button className="w-full" onClick={save} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{form.id ? "Сохранить изменения" : "Создать сотрудника"}</Button></DialogContent></Dialog>
+    <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{form.id ? "Редактировать сотрудника" : "Новый сотрудник"}</DialogTitle>
+          <DialogDescription>{form.id ? "Изменения обновят карточку и логин сотрудника." : "Система создаст карточку и учётную запись для входа. При первом входе сотрудник задаст собственный пароль."}</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2"><Label>Имя *</Label><Input required value={form.firstName} onChange={e => setForm({ ...form, firstName: e.target.value })} /></div>
+          <div className="space-y-2"><Label>Фамилия *</Label><Input required value={form.lastName} onChange={e => setForm({ ...form, lastName: e.target.value })} /></div>
+          <div className="space-y-2 sm:col-span-2"><Label>Отчество</Label><Input value={form.middleName} onChange={e => setForm({ ...form, middleName: e.target.value })} /></div>
+          <div className="space-y-2 sm:col-span-2"><Label>Email-логин</Label><Input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></div>
+          <div className="space-y-2"><Label>Телефон</Label><Input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} /></div>
+          <div className="space-y-2"><Label>Роль доступа</Label><Select value={form.role} disabled={form.id === current?.id} onValueChange={value => setForm({ ...form, role: value, position: form.id ? form.position : value === "trainer" ? "Тренер" : value === "owner" ? "Управляющий" : "Администратор" })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="owner">Управляющий</SelectItem><SelectItem value="admin">Администратор</SelectItem><SelectItem value="trainer">Тренер</SelectItem></SelectContent></Select></div>
+          <div className="space-y-2 sm:col-span-2"><Label>Должность</Label><Input value={form.position} onChange={e => setForm({ ...form, position: e.target.value })} placeholder="Например: Ассистент руководителя" /></div>
+        </div>
+        <Button className="w-full" onClick={save} disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{form.id ? "Сохранить изменения" : "Создать сотрудника"}</Button>
+      </DialogContent>
+    </Dialog>
   </div>;
 }

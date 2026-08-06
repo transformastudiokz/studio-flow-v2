@@ -10,7 +10,7 @@ export const useCurrentProfile = () => useQuery({
     if (!user) return null;
     const { data, error } = await supabase
       .from("profiles")
-      .select("id, first_name, last_name, email, phone, role, position, is_active, must_change_password")
+      .select("id, first_name, last_name, middle_name, email, phone, role, position, is_active, must_change_password")
       .eq("id", user.id)
       .single();
     if (error) throw error;
