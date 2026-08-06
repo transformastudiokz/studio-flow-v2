@@ -40,7 +40,7 @@ export function TrainerSessionCard({ session }: { session: TrainerScheduleSessio
     <article
       aria-label={accessibleSummary}
       className={cn(
-        "relative min-w-0 overflow-hidden rounded-xl border bg-white px-3 py-2.5 shadow-sm",
+        "relative min-w-0 overflow-hidden rounded-xl border bg-white px-3 py-2 shadow-sm",
         session.booking_status === "cancelled" && "border-red-200 bg-slate-100 opacity-70",
         session.booking_status === "closed" && "bg-slate-50",
       )}
@@ -76,8 +76,8 @@ export function TrainerSessionCard({ session }: { session: TrainerScheduleSessio
           </span>
         </div>
       </div>
-      <h3 className="mt-1 truncate pl-1 text-[15px] font-semibold leading-5" title={session.class_name}>{session.class_name}</h3>
-      <p className="truncate pl-1 text-[11px] leading-4 text-muted-foreground" title={`${session.coach_name} · ${room}`}>
+      <h3 className="mt-0.5 truncate pl-1 text-sm font-semibold leading-[18px]" title={session.class_name}>{session.class_name}</h3>
+      <p className="truncate pl-1 text-[10px] leading-3.5 text-muted-foreground" title={`${session.coach_name} · ${room}`}>
         {coach}<span className="mx-1">•</span>{room}
       </p>
       {session.booking_status !== "open" ? (

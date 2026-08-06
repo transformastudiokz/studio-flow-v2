@@ -16,14 +16,14 @@ export const TrainerLayout = ({ children }: TrainerLayoutProps) => {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-24">
+    <div className="min-h-screen bg-gray-50 pb-16">
       <main className="relative mx-auto min-h-screen max-w-2xl overflow-hidden bg-white shadow-xl">
-        <div className="h-full overflow-y-auto pb-20">
+        <div className="h-full overflow-y-auto pb-14">
           {children || <Outlet />}
         </div>
       </main>
 
-      <nav className="fixed bottom-0 left-0 right-0 z-50 mx-auto flex max-w-2xl items-center justify-around border-t border-gray-200 bg-white/95 px-6 py-2 shadow-[0_-5px_15px_rgba(0,0,0,0.05)] backdrop-blur-md">
+      <nav className="fixed bottom-0 left-0 right-0 z-50 mx-auto flex h-14 max-w-2xl items-center justify-around border-t border-gray-200 bg-white/95 px-6 shadow-[0_-5px_15px_rgba(0,0,0,0.05)] backdrop-blur-md">
         {navItems.map((item) => {
           const isActive = location.pathname === item.href;
           return (
@@ -31,15 +31,15 @@ export const TrainerLayout = ({ children }: TrainerLayoutProps) => {
               key={item.name}
               to={item.href}
               className={cn(
-                "flex flex-col items-center gap-1 transition-all duration-300 active:scale-95 w-20 py-2",
+                "flex w-20 flex-col items-center gap-0.5 py-1 transition-all duration-300 active:scale-95",
                 isActive ? "text-primary" : "text-gray-400 hover:text-gray-600"
               )}
             >
               <item.icon
-                className={cn("w-6 h-6 transition-all duration-300", isActive && "fill-primary/20 scale-110")}
+                className={cn("h-5 w-5 transition-all duration-300", isActive && "scale-105 fill-primary/20")}
                 strokeWidth={isActive ? 2.5 : 2}
               />
-              <span className={cn("text-[10px] font-medium", isActive && "font-bold")}>{item.name}</span>
+              <span className={cn("text-[9px] font-medium", isActive && "font-bold")}>{item.name}</span>
             </Link>
           );
         })}
