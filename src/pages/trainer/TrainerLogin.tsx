@@ -5,21 +5,23 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Loader2, Phone, Lock } from "lucide-react";
+import { Loader2, UserRound, Lock } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
 const TrainerLogin = () => {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
-  const [phone, setPhone] = useState("");
+  const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
 
   const handleLogin = async () => {
-    if (!phone || !password) return toast.error("Введите телефон и пароль");
+    if (!login || !password) return toast.error("Введите e-mail или телефон и пароль");
     setIsLoading(true);
     try {
-      const cleanPhone = phone.replace(/\D/g, '');
-      const email = `${cleanPhone}@balance.kz`;
+      const cleanLogin = login.trim();
+      const email = cleanLogin.includes("@")
+        ? cleanLogin.toLocaleLowerCase("ru-RU")
+        : `${cleanLogin.replace(/\D/g, "")}@balance.kz`;
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
 
@@ -34,8 +36,8 @@ const TrainerLogin = () => {
 
       toast.success("Добро пожаловать!");
       navigate("/trainer");
-    } catch (e: any) {
-      toast.error(e.message || "Ошибка входа");
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Ошибка входа");
     } finally {
       setIsLoading(false);
     }
@@ -53,17 +55,17 @@ const TrainerLogin = () => {
         </CardHeader>
         <CardContent className="space-y-4 pt-4">
           <div className="space-y-2">
-            <Label>Телефон</Label>
+            <Label>E-mail или телефон</Label>
             <div className="relative">
-              <Phone className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-              <Input className="pl-9 h-11" value={phone} onChange={e => setPhone(e.target.value)} placeholder="777..." />
+              <UserRound className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+              <Input autoComplete="username" className="pl-9 h-11" value={login} onChange={e => setLogin(e.target.value)} placeholder="name@example.com" />
             </div>
           </div>
           <div className="space-y-2">
             <Label>Пароль</Label>
             <div className="relative">
               <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-              <Input type="password" className="pl-9 h-11" value={password} onChange={e => setPassword(e.target.value)} placeholder="******" />
+              <Input autoComplete="current-password" type="password" className="pl-9 h-11" value={password} onChange={e => setPassword(e.target.value)} placeholder="******" onKeyDown={event => { if (event.key === "Enter") void handleLogin(); }} />
             </div>
           </div>
           <Button className="w-full h-11" onClick={handleLogin} disabled={isLoading}>

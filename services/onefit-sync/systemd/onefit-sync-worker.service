@@ -9,11 +9,11 @@ User=onefit-sync
 Group=onefit-sync
 WorkingDirectory=/opt/onefit-sync
 EnvironmentFile=/etc/onefit-sync.env
-ExecStart=/usr/bin/node /opt/onefit-sync/src/worker.mjs
+Environment=ONEFIT_HEADLESS=false
+ExecStart=/usr/bin/xvfb-run -a /usr/bin/node /opt/onefit-sync/src/worker.mjs
 Restart=always
 RestartSec=10
 MemoryMax=700M
-PrivateTmp=true
 NoNewPrivileges=true
 
 [Install]

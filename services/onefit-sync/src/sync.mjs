@@ -38,10 +38,16 @@ async function acquireLock() {
 async function scrapeToday() {
   const context = await chromium.launchPersistentContext(config.profileDir, {
     executablePath: config.chromiumPath,
-    headless: true,
+    headless: config.headless,
     viewport: { width: 1440, height: 3000 },
     args: ["--disable-dev-shm-usage", "--disable-gpu"],
-    env: { HOME: "/var/lib/onefit-sync", LANG: "ru_RU.UTF-8", PATH: "/usr/bin:/bin" },
+    env: {
+      HOME: "/var/lib/onefit-sync",
+      LANG: "ru_RU.UTF-8",
+      PATH: "/usr/bin:/bin",
+      ...(process.env.DISPLAY ? { DISPLAY: process.env.DISPLAY } : {}),
+      ...(process.env.XAUTHORITY ? { XAUTHORITY: process.env.XAUTHORITY } : {}),
+    },
   });
   try {
     const page = context.pages()[0] || await context.newPage();
@@ -52,8 +58,8 @@ async function scrapeToday() {
       if (!config.onefitEmail || !config.onefitPassword) {
         throw new Error("OneFit authentication expired: ONEFIT_EMAIL and ONEFIT_PASSWORD are required for autonomous recovery");
       }
-      await page.getByLabel("Эл. почта").fill(config.onefitEmail);
-      await page.getByLabel("Пароль").fill(config.onefitPassword);
+      await page.locator('input[name="email"]').fill(config.onefitEmail);
+      await page.locator('input[name="password"]').fill(config.onefitPassword);
       await page.getByRole("button", { name: "Войти в аккаунт" }).click();
       await page.waitForURL((url) => !url.pathname.includes("/login"), { timeout: 60_000 });
       await page.waitForLoadState("domcontentloaded");
