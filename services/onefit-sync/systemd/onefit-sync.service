@@ -1,19 +1,17 @@
 [Unit]
 Description=OneFit to CRM scheduled sync
-After=network-online.target
+After=network-online.target onefit-browser.service
 Wants=network-online.target
+Requires=onefit-browser.service
 
 [Service]
 Type=oneshot
-User=onefit-sync
-Group=onefit-sync
+User=root
+Group=root
 WorkingDirectory=/opt/onefit-sync
-EnvironmentFile=/etc/onefit-sync.env
-Environment=ONEFIT_HEADLESS=false
-ExecStart=/usr/bin/xvfb-run -a /usr/bin/node /opt/onefit-sync/src/sync-range.mjs
+ExecStart=/bin/bash -lc 'set -a; source /etc/onefit-sync.env; set +a; exec /usr/bin/node /opt/onefit-sync/src/sync-range.mjs'
 TimeoutStartSec=900
 MemoryMax=650M
-NoNewPrivileges=true
 
 [Install]
 WantedBy=multi-user.target

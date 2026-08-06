@@ -1,0 +1,17 @@
+[Unit]
+Description=Persistent OneFit browser session
+After=network-online.target onefit-browser-display.service
+Requires=onefit-browser-display.service
+
+[Service]
+Type=simple
+User=onefit-sync
+Group=onefit-sync
+Environment=DISPLAY=:98
+ExecStart=/opt/playwright/chromium-1187/chrome-linux/chrome --no-sandbox --disable-dev-shm-usage --disable-gpu --no-first-run --no-default-browser-check --password-store=basic --remote-debugging-port=9222 --user-data-dir=/var/lib/onefit-sync/browser-profile https://erp.1fit.app/
+Restart=always
+RestartSec=5
+MemoryMax=700M
+
+[Install]
+WantedBy=multi-user.target

@@ -18,5 +18,6 @@ export const config = {
   targetDate: process.env.ONEFIT_TARGET_DATE || new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString().slice(0, 10),
   onefitEmail: process.env.ONEFIT_EMAIL?.trim() || decoded("ONEFIT_EMAIL_B64"),
   onefitPassword: process.env.ONEFIT_PASSWORD || decoded("ONEFIT_PASSWORD_B64"),
+  cdpUrl: process.env.ONEFIT_CDP_URL?.trim() || "",
   onefitUrl: "https://erp.1fit.app/",
 };

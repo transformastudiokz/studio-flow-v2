@@ -36,7 +36,8 @@ async function acquireLock() {
 }
 
 async function scrapeToday() {
-  const context = await chromium.launchPersistentContext(config.profileDir, {
+  const sharedBrowser = config.cdpUrl ? await chromium.connectOverCDP(config.cdpUrl) : null;
+  const context = sharedBrowser?.contexts()[0] || await chromium.launchPersistentContext(config.profileDir, {
     executablePath: config.chromiumPath,
     headless: config.headless,
     viewport: { width: 1440, height: 3000 },
@@ -49,20 +50,31 @@ async function scrapeToday() {
       ...(process.env.XAUTHORITY ? { XAUTHORITY: process.env.XAUTHORITY } : {}),
     },
   });
+  let page;
   try {
-    const page = context.pages()[0] || await context.newPage();
-    await page.goto(config.onefitUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
+    page = sharedBrowser ? (context.pages()[0] || await context.newPage()) : (context.pages()[0] || await context.newPage());
+    if (!sharedBrowser || !page.url().startsWith("https://erp.1fit.app/") || page.url().includes("/login")) {
+      await page.goto(config.onefitUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
+    }
 
     const ensureAuthenticated = async () => {
-      if (!page.url().includes("/login")) return;
-      if (!config.onefitEmail || !config.onefitPassword) {
-        throw new Error("OneFit authentication expired: ONEFIT_EMAIL and ONEFIT_PASSWORD are required for autonomous recovery");
+      if (page.url().includes("/login")) {
+        if (!config.onefitEmail || !config.onefitPassword) {
+          throw new Error("OneFit authentication expired: ONEFIT_EMAIL and ONEFIT_PASSWORD are required for autonomous recovery");
+        }
+        await page.locator('input[name="email"]').fill(config.onefitEmail);
+        await page.locator('input[name="password"]').fill(config.onefitPassword);
+        await page.getByRole("button", { name: "Войти в аккаунт" }).click();
+        await page.waitForURL((url) => !url.pathname.includes("/login"), { timeout: 60_000 });
+        await page.waitForLoadState("domcontentloaded");
       }
-      await page.locator('input[name="email"]').fill(config.onefitEmail);
-      await page.locator('input[name="password"]').fill(config.onefitPassword);
-      await page.getByRole("button", { name: "Войти в аккаунт" }).click();
-      await page.waitForURL((url) => !url.pathname.includes("/login"), { timeout: 60_000 });
-      await page.waitForLoadState("domcontentloaded");
+      if (page.url().includes("/welcome")) {
+        const later = page.getByText("Later", { exact: true });
+        if (await later.count()) await later.click();
+        await page.getByText("Пропустить", { exact: true }).click();
+        await page.waitForURL((url) => !url.pathname.includes("/welcome"), { timeout: 30_000 });
+        await page.waitForLoadState("domcontentloaded");
+      }
     };
     await ensureAuthenticated();
     const target = new Date(`${config.targetDate}T12:00:00+05:00`);
@@ -75,9 +87,12 @@ async function scrapeToday() {
 
     const selectTargetDate = async () => {
       await ensureAuthenticated();
-      await page.locator("li").filter({ hasText: /^(Сегодня|Пн|Вт|Ср|Чт|Пт|Сб|Вс)\s*\d+$/ }).first().waitFor({ timeout: 30_000 });
-      const selectedToday = page.locator("li").filter({ hasText: new RegExp(`^Сегодня\\s*${new Date(`${today}T12:00:00+05:00`).getUTCDate()}$`) });
-      const selectedClass = await selectedToday.getAttribute("class");
+      try {
+        await page.locator("li").filter({ hasText: /^(Сегодня|Пн|Вт|Ср|Чт|Пт|Сб|Вс)\s*\d+$/ }).first().waitFor({ timeout: 30_000 });
+      } catch (error) {
+        console.error(`OneFit page diagnostic: ${page.url()} :: ${(await page.locator("body").innerText().catch(() => "")).slice(0, 500)}`);
+        throw error;
+      }
       let targetDateItem = page.locator("li").filter({ hasText: targetPattern });
       if (historical) {
         for (let attempt = 0; attempt < 8 && await targetDateItem.count() === 0; attempt += 1) {
@@ -90,13 +105,13 @@ async function scrapeToday() {
       }
       if (await targetDateItem.count() !== 1) throw new Error(`OneFit date is not visible: ${targetLabel}`);
       await targetDateItem.click();
-      await page.waitForFunction(
-        ({ label, className }) => [...document.querySelectorAll("li")].some((node) =>
-          node.textContent?.replace(/\s+/g, " ").trim() === label && node.className === className),
-        { label: targetLabel, className: selectedClass },
-        { timeout: 10_000 },
-      );
-      await page.waitForTimeout(800);
+      // The persistent browser can already have another date selected by the
+      // previous range child. CSS classes therefore cannot be compared with
+      // the "Today" item: after the first child that class is no longer the
+      // selected class. Wait for the date item to remain present and give the
+      // dashboard time to replace its visit lists instead.
+      await targetDateItem.waitFor({ state: "visible", timeout: 10_000 });
+      await page.waitForTimeout(1_200);
     };
     await selectTargetDate();
     const collectSnapshot = (sectionLabel) => page.evaluate(async (label) => {
@@ -183,7 +198,7 @@ async function scrapeToday() {
     }
     throw lastError;
   } finally {
-    await context.close();
+    if (!sharedBrowser) await context.close();
   }
 }
 
@@ -290,3 +305,4 @@ async function sync() {
 }
 
 await sync();
+if (config.cdpUrl) process.exit(0);

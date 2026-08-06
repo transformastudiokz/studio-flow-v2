@@ -1,20 +1,18 @@
 [Unit]
 Description=OneFit manual sync request worker
-After=network-online.target
+After=network-online.target onefit-browser.service
 Wants=network-online.target
+Requires=onefit-browser.service
 
 [Service]
 Type=simple
-User=onefit-sync
-Group=onefit-sync
+User=root
+Group=root
 WorkingDirectory=/opt/onefit-sync
-EnvironmentFile=/etc/onefit-sync.env
-Environment=ONEFIT_HEADLESS=false
-ExecStart=/usr/bin/xvfb-run -a /usr/bin/node /opt/onefit-sync/src/worker.mjs
+ExecStart=/bin/bash -lc 'set -a; source /etc/onefit-sync.env; set +a; exec /usr/bin/node /opt/onefit-sync/src/worker.mjs'
 Restart=always
 RestartSec=10
 MemoryMax=700M
-NoNewPrivileges=true
 
 [Install]
 WantedBy=multi-user.target

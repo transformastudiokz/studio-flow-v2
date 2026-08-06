@@ -5,7 +5,10 @@ const manual = process.argv.includes("--manual");
 const runIdIndex = process.argv.indexOf("--run-id");
 const requestedRunId = runIdIndex >= 0 ? process.argv[runIdIndex + 1] : null;
 
-const dates = [0, 1, 2].map((offset) => {
+// Operational horizon: keep only today and tomorrow fresh. The studio uses
+// OneFit occupancy to manage the next day, so scraping a third day adds load
+// without improving the team's decisions.
+const dates = [0, 1].map((offset) => {
   const date = new Date(`${kazakhstanToday()}T00:00:00Z`);
   date.setUTCDate(date.getUTCDate() + offset);
   return date.toISOString().slice(0, 10);

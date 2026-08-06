@@ -1,0 +1,14 @@
+[Unit]
+Description=Virtual display for OneFit browser
+After=network.target
+
+[Service]
+Type=simple
+User=onefit-sync
+Group=onefit-sync
+ExecStart=/usr/bin/Xvfb :98 -screen 0 1200x800x24 -ac
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
