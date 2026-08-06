@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { endOfMonth, format, isSameDay, parseISO, startOfMonth } from "date-fns";
+import { addMonths, endOfDay, endOfMonth, format, isSameDay, parseISO, startOfMonth } from "date-fns";
 import { ru } from "date-fns/locale";
 import { Calendar, Loader2, LogOut, Star, Users } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -28,20 +28,29 @@ const TrainerHome = () => {
 
       const now = new Date();
       const range = { p_from: startOfMonth(now).toISOString(), p_to: endOfMonth(now).toISOString() };
-      const [{ data: monthSessionsResult, error: sessionsError }, { data: metricsResult, error: metricsError }] = await Promise.all([
+      const [{ data: monthSessionsResult, error: sessionsError }, { data: metricsResult, error: metricsError }, { data: upcomingResult, error: upcomingError }] = await Promise.all([
         supabase.rpc("get_trainer_schedule_v2", range),
         supabase.rpc("get_trainer_home_metrics", range),
+        supabase.rpc("get_trainer_schedule_v2", {
+          p_from: endOfDay(now).toISOString(),
+          p_to: addMonths(now, 3).toISOString(),
+        }),
       ]);
       if (sessionsError) throw sessionsError;
       if (metricsError) throw metricsError;
+      if (upcomingError) throw upcomingError;
 
       const monthSessions = (monthSessionsResult || []) as TrainerScheduleSession[];
       const todaySessions = monthSessions.filter((session) => isSameDay(parseISO(session.start_time), now));
+      const nextSession = ((upcomingResult || []) as TrainerScheduleSession[])
+        .filter((session) => session.booking_status !== "cancelled")
+        .sort((left, right) => parseISO(left.start_time).getTime() - parseISO(right.start_time).getTime())[0] || null;
       const metrics = metricsResult?.[0] || { total_sessions: 0, total_clients: 0, total_stars: 0 };
 
       return {
         profile,
         todaySessions,
+        nextSession,
         totalClients: count(metrics.total_clients),
         totalSessions: count(metrics.total_sessions),
         totalStars: count(metrics.total_stars),
@@ -58,7 +67,7 @@ const TrainerHome = () => {
 
   if (isLoading) return <div className="mt-20 flex justify-center"><Loader2 className="animate-spin text-primary" /></div>;
 
-  const { profile, todaySessions = [], totalClients = 0, totalSessions = 0, totalStars = 0 } = data || {};
+  const { profile, todaySessions = [], nextSession, totalClients = 0, totalSessions = 0, totalStars = 0 } = data || {};
   const surnameInitial = profile?.last_name?.trim()?.slice(0, 1).toLocaleUpperCase("ru-RU");
   const greetingName = [profile?.first_name?.trim(), surnameInitial ? `${surnameInitial}.` : ""].filter(Boolean).join(" ") || "Тренер";
   const now = new Date();
@@ -66,7 +75,7 @@ const TrainerHome = () => {
   const metrics = [
     { label: "занятий", value: totalSessions, icon: Calendar, color: "text-[#456B57]", background: "bg-[#EEF4F0]" },
     { label: "клиентов", value: totalClients, icon: Users, color: "text-[#557665]", background: "bg-[#F0F6F2]" },
-    { label: "звёздочек", value: totalStars, icon: Star, color: "text-amber-700", background: "bg-[#FFF8E8]" },
+    { label: "звёздочек", value: totalStars, icon: Star, color: "text-[#557665]", iconColor: "text-[#E6B23C]", background: "bg-[#FFF9E8]" },
   ];
 
   return (
@@ -83,9 +92,9 @@ const TrainerHome = () => {
       <section className="px-4">
         <h2 className="mb-3 text-base font-semibold text-foreground/75">{capitalize(format(now, "LLLL yyyy", { locale: ru }))}</h2>
         <div className="grid grid-cols-3 gap-2.5">
-          {metrics.map(({ label, value, icon: Icon, color, background }) => (
+          {metrics.map(({ label, value, icon: Icon, color, iconColor, background }) => (
             <div key={label} className={`${background} min-w-0 rounded-[20px] px-2 py-3.5 text-center`}>
-              <Icon className={`${color} mx-auto mb-1 h-5 w-5`} fill={label === "звёздочек" ? "currentColor" : "none"} />
+              <Icon className={`${iconColor || color} mx-auto mb-1 h-5 w-5`} fill={label === "звёздочек" && value > 0 ? "currentColor" : "none"} />
               <div className={`${color} text-2xl font-bold tabular-nums`}>{value}</div>
               <div className={`${color} mt-0.5 truncate text-[11px] font-medium`}>{label}</div>
             </div>
@@ -102,6 +111,20 @@ const TrainerHome = () => {
         ) : (
           <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center">
             <p className="text-sm text-muted-foreground">Занятий сегодня нет</p>
+          </div>
+        )}
+      </section>
+
+      <section className="px-4">
+        <h2 className="mb-1 text-base font-semibold text-foreground/75">Следующее занятие</h2>
+        {nextSession ? (
+          <div>
+            <p className="mb-2 text-sm capitalize text-muted-foreground">{format(parseISO(nextSession.start_time), "EEEE, d MMMM", { locale: ru })}</p>
+            <TrainerSessionCard session={nextSession} />
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-center">
+            <p className="text-sm text-muted-foreground">Следующее занятие пока не запланировано</p>
           </div>
         )}
       </section>
