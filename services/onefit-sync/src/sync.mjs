@@ -7,6 +7,7 @@ import { findMissingActiveKeys } from "./reconcile.mjs";
 import { claimRun, createRun, finishRun, rest } from "./supabase.mjs";
 
 const triggerType = process.argv.includes("--manual") ? "manual" : "schedule";
+const historical = process.argv.includes("--historical");
 const runIdIndex = process.argv.indexOf("--run-id");
 const requestedRunId = runIdIndex >= 0 ? process.argv[runIdIndex + 1] : null;
 const lockPath = "/var/lib/onefit-sync/onefit-sync.lock";
@@ -58,7 +59,16 @@ async function scrapeToday() {
       await page.getByText("Подтвердившие", { exact: true }).waitFor({ timeout: 30_000 });
       const selectedToday = page.locator("li").filter({ hasText: new RegExp(`^Сегодня\\s*${new Date(`${today}T12:00:00+05:00`).getUTCDate()}$`) });
       const selectedClass = await selectedToday.getAttribute("class");
-      const targetDateItem = page.locator("li").filter({ hasText: targetPattern });
+      let targetDateItem = page.locator("li").filter({ hasText: targetPattern });
+      if (historical) {
+        for (let attempt = 0; attempt < 8 && await targetDateItem.count() === 0; attempt += 1) {
+          const back = page.getByRole("button", { name: "Прокрутить ленту назад" });
+          if (await back.count() !== 1) break;
+          await back.click();
+          await page.waitForTimeout(500);
+          targetDateItem = page.locator("li").filter({ hasText: targetPattern });
+        }
+      }
       if (await targetDateItem.count() !== 1) throw new Error(`OneFit date is not visible: ${targetLabel}`);
       await targetDateItem.click();
       await page.waitForFunction(
@@ -177,7 +187,12 @@ async function sync() {
     date.setUTCDate(date.getUTCDate() + offset);
     return date.toISOString().slice(0, 10);
   }));
-  if (!allowedDates.has(config.targetDate)) throw new Error("OneFit sync target must be today or one of the next two days");
+  if (!allowedDates.has(config.targetDate) && !historical) {
+    throw new Error("OneFit sync target must be today or one of the next two days");
+  }
+  if (historical && config.targetDate > today) {
+    throw new Error("Historical OneFit sync cannot target a future date");
+  }
   const lock = await acquireLock();
   if (!lock) {
     console.log(JSON.stringify({ ok: true, skipped: "sync_already_running" }));
