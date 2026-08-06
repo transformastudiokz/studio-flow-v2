@@ -79,7 +79,7 @@ const TrainerHome = () => {
   ];
 
   return (
-    <div className="animate-in space-y-3 pb-3 fade-in">
+    <div className="animate-in space-y-2 pb-2 fade-in">
       <header className="relative overflow-hidden bg-gradient-to-b from-[#719381] to-[#557665] px-5 pb-4 pt-5 text-white">
         <Button aria-label="Выйти" variant="ghost" size="icon" className="absolute right-3 top-2.5 h-9 w-9 text-white/75 hover:bg-white/10 hover:text-white" onClick={handleLogout}>
           <LogOut className="h-4.5 w-4.5" />
@@ -90,12 +90,12 @@ const TrainerHome = () => {
       </header>
 
       <section className="px-3.5">
-        <h2 className="mb-2 text-sm font-semibold text-foreground/75">{capitalize(format(now, "LLLL yyyy", { locale: ru }))}</h2>
+        <h2 className="mb-1 text-[13px] font-semibold text-foreground/75">{capitalize(format(now, "LLLL yyyy", { locale: ru }))}</h2>
         <div className="grid grid-cols-3 gap-2">
           {metrics.map(({ label, value, icon: Icon, color, iconColor, background }) => (
-            <div key={label} className={`${background} min-w-0 rounded-2xl px-1.5 py-2 text-center`}>
-              <Icon className={`${iconColor || color} mx-auto h-4 w-4`} fill={label === "звёздочек" && value > 0 ? "currentColor" : "none"} />
-              <div className={`${color} mt-0.5 text-xl font-bold leading-6 tabular-nums`}>{value}</div>
+            <div key={label} className={`${background} min-w-0 rounded-xl px-1.5 py-1.5 text-center`}>
+              <Icon className={`${iconColor || color} mx-auto h-3.5 w-3.5`} fill={label === "звёздочек" && value > 0 ? "currentColor" : "none"} />
+              <div className={`${color} mt-0.5 text-lg font-bold leading-[22px] tabular-nums`}>{value}</div>
               <div className={`${color} truncate text-[10px] font-medium leading-3`}>{label}</div>
             </div>
           ))}
@@ -103,7 +103,7 @@ const TrainerHome = () => {
       </section>
 
       <section className="px-3.5">
-        <h2 className="mb-1.5 text-sm font-semibold text-foreground/75">Сегодня</h2>
+        <h2 className="mb-1 text-[13px] font-semibold text-foreground/75">Сегодня</h2>
         {todaySessions.length > 0 ? (
           <div className="grid gap-2 sm:grid-cols-2">
             {todaySessions.map((session) => <TrainerSessionCard key={session.id} session={session} />)}
@@ -116,7 +116,7 @@ const TrainerHome = () => {
       </section>
 
       <section className="px-3.5">
-        <h2 className="text-sm font-semibold text-foreground/75">Следующее занятие</h2>
+        <h2 className="text-[13px] font-semibold text-foreground/75">Следующее занятие</h2>
         {nextSession ? (
           <div>
             <p className="mb-1 text-xs capitalize text-muted-foreground">{format(parseISO(nextSession.start_time), "EEEE, d MMMM", { locale: ru })}</p>
