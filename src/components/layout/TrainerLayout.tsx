@@ -17,13 +17,13 @@ export const TrainerLayout = ({ children }: TrainerLayoutProps) => {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
-      <main className="max-w-md mx-auto min-h-screen bg-white shadow-xl overflow-hidden relative">
+      <main className="relative mx-auto min-h-screen max-w-2xl overflow-hidden bg-white shadow-xl">
         <div className="h-full overflow-y-auto pb-20">
           {children || <Outlet />}
         </div>
       </main>
 
-      <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-t border-gray-200 px-6 py-2 flex justify-around items-center max-w-md mx-auto shadow-[0_-5px_15px_rgba(0,0,0,0.05)]">
+      <nav className="fixed bottom-0 left-0 right-0 z-50 mx-auto flex max-w-2xl items-center justify-around border-t border-gray-200 bg-white/95 px-6 py-2 shadow-[0_-5px_15px_rgba(0,0,0,0.05)] backdrop-blur-md">
         {navItems.map((item) => {
           const isActive = location.pathname === item.href;
           return (

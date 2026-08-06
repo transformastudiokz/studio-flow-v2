@@ -1,10 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
-import { format, startOfMonth, endOfMonth, parseISO } from "date-fns";
+import { format, startOfMonth, endOfMonth, parseISO, isSameDay } from "date-fns";
 import { ru } from "date-fns/locale";
-import { Loader2, LogOut, Users, Calendar, TrendingUp, Clock } from "lucide-react";
+import { Loader2, LogOut, Users, Calendar, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
+import { TrainerSessionCard, type TrainerScheduleSession } from "@/components/trainer/TrainerSessionCard";
 
 const TrainerHome = () => {
   const navigate = useNavigate();
@@ -27,34 +28,24 @@ const TrainerHome = () => {
       const monthStart = startOfMonth(now).toISOString();
       const monthEnd = endOfMonth(now).toISOString();
 
-      // Sessions this month
-      const { data: monthSessions } = await supabase
-        .from('schedule_sessions')
-        .select('id, start_time, end_time, capacity, class_type:class_types(name, color), bookings(id, status, count)')
-        .eq('coach_id', coach.id)
-        .gte('start_time', monthStart)
-        .lte('start_time', monthEnd)
-        .order('start_time');
-
-      // Today's sessions
-      const todayStart = new Date(); todayStart.setHours(0,0,0,0);
-      const todayEnd = new Date(); todayEnd.setHours(23,59,59,999);
-      const { data: todaySessions } = await supabase
-        .from('schedule_sessions')
-        .select('id, start_time, end_time, capacity, class_type:class_types(name, color), bookings(id, status, count)')
-        .eq('coach_id', coach.id)
-        .gte('start_time', todayStart.toISOString())
-        .lte('start_time', todayEnd.toISOString())
-        .order('start_time');
+      const { data: monthSessionsResult, error: sessionsError } = await supabase.rpc('get_trainer_schedule_v2', {
+        p_from: monthStart,
+        p_to: monthEnd,
+      });
+      if (sessionsError) throw sessionsError;
+      const monthSessions = (monthSessionsResult || []) as TrainerScheduleSession[];
+      const todaySessions = monthSessions.filter((session) => isSameDay(parseISO(session.start_time), new Date()));
 
       // Only attended/completed count for payroll
       const totalClients = (monthSessions || []).reduce((sum: number, s: any) =>
-        sum + (s.bookings || []).filter((b: any) => b.status === 'attended' || b.status === 'completed').length, 0);
+        sum + Number(s.completed_count || 0), 0);
       const totalSessions = (monthSessions || []).length;
       const payment = totalClients * (coach.rate_per_client || 0);
 
-      return { coach, todaySessions: todaySessions || [], monthSessions: monthSessions || [], totalClients, totalSessions, payment };
-    }
+      return { coach, todaySessions, monthSessions, totalClients, totalSessions, payment };
+    },
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: "always",
   });
 
   const handleLogout = async () => {
@@ -106,31 +97,8 @@ const TrainerHome = () => {
       <div className="px-4">
         <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Сегодня</h2>
         {todaySessions && todaySessions.length > 0 ? (
-          <div className="space-y-3">
-            {todaySessions.map((session: any) => {
-              const booked = session.bookings?.[0]?.count || 0;
-              const isFull = booked >= session.capacity;
-              return (
-                <div key={session.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex">
-                  <div className="w-1.5 shrink-0" style={{ backgroundColor: session.class_type?.color || '#3b82f6' }} />
-                  <div className="p-4 flex-1">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <p className="font-bold text-base">{session.class_type?.name}</p>
-                        <div className="flex items-center gap-1 text-sm text-gray-500 mt-1">
-                          <Clock className="w-3.5 h-3.5" />
-                          <span>{format(parseISO(session.start_time), 'HH:mm')} – {format(parseISO(session.end_time), 'HH:mm')}</span>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className={`text-2xl font-bold ${isFull ? 'text-red-600' : 'text-primary'}`}>{booked}</div>
-                        <div className="text-xs text-gray-400">из {session.capacity}</div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+          <div className="grid gap-2.5 sm:grid-cols-2">
+            {todaySessions.map((session) => <TrainerSessionCard key={session.id} session={session} />)}
           </div>
         ) : (
           <div className="bg-gray-50 rounded-2xl p-8 text-center border border-dashed border-gray-200">
