@@ -275,12 +275,16 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
         email: clientForm.email.trim(),
       });
     },
-    onSuccess: async ({ login, temporaryPassword }) => {
+    onSuccess: async ({ login, temporaryPassword, created }) => {
       await Promise.all([refresh(), queryClient.invalidateQueries({ queryKey: ["schedule_client_search"] })]);
       setShowCreate(false);
       setShowAdd(false);
       setClientForm({ firstName: "", lastName: "", phone: "", email: "" });
-      toast.success("Клиент создан и записан", { description: `Логин: ${login} · временный пароль: ${temporaryPassword}` });
+      if (created) {
+        toast.success("Клиент создан и записан", { description: `Логин: ${login} · временный пароль: ${temporaryPassword}` });
+      } else {
+        toast.success("Существующий клиент записан", { description: `Логин: ${login}. Текущий пароль сохранён.` });
+      }
     },
     onError: (error: Error) => toast.error(error.message),
   });

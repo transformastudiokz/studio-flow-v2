@@ -1,8 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
-import { createClient } from "@supabase/supabase-js";
-import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -48,77 +46,26 @@ const NewClient = () => {
         throw new Error("Введите имя и телефон (минимум 10 цифр)");
       }
 
-      // Password: "yoga" + last 4 digits
-      const last4 = cleanPhone.slice(-4);
-      const password = `yoga${last4}`;
-
-      // Email: phone@balance.kz OR provided email
-      const email = form.email.trim() || `${cleanPhone}@balance.kz`;
-
-      // Use separate client so admin session is NOT affected
-      const tempSupabase = createClient(
-        import.meta.env.VITE_SUPABASE_URL,
-        import.meta.env.VITE_SUPABASE_ANON_KEY,
-        {
-          auth: {
-            persistSession: false,
-            autoRefreshToken: false,
-            detectSessionInUrl: false,
-          },
-        }
-      );
-
-      const { data: authData, error: authError } = await tempSupabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            first_name: form.first_name,
-            last_name: form.last_name,
-            phone: cleanPhone,
-          },
-        },
-      });
-
-      if (authError) throw authError;
-      const userId = authData.user?.id;
-      if (!userId) throw new Error("Ошибка создания аккаунта");
-
-      // Give the DB trigger time to create the profile row
-      await new Promise((r) => setTimeout(r, 800));
-
-      // Update profile with correct data and role
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .update({
-          first_name: form.first_name,
-          last_name: form.last_name,
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Сессия сотрудника истекла. Войди повторно.");
+      const response = await fetch("/api/clients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({
+          action: "create",
+          firstName: form.first_name,
+          lastName: form.last_name,
           phone: cleanPhone,
-          role: "client",
-        })
-        .eq("id", userId);
-
-      if (profileError) throw profileError;
-
-      // Assign subscription if selected
-      if (form.plan_id !== "none") {
-        const plan = plans.find((p: any) => p.id === form.plan_id);
-        if (plan) {
-          const { error: subError } = await supabase.from("user_subscriptions").insert({
-            user_id: userId,
-            plan_id: plan.id,
-            visits_remaining: plan.visits_count,
-            visits_total: plan.visits_count,
-            start_date: format(new Date(), "yyyy-MM-dd"),
-            activation_date: null,
-            end_date: null,
-            is_active: true,
-          });
-          if (subError) throw subError;
-        }
+          email: form.email,
+          planId: form.plan_id,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "Не удалось создать клиента");
+      if (!payload.temporaryPassword) {
+        throw new Error("Клиент уже существует. Открой его карточку вместо повторного создания.");
       }
-
-      return { phone: cleanPhone, password, name: form.first_name };
+      return { phone: payload.login, password: payload.temporaryPassword, name: form.first_name };
     },
     onSuccess: (result) => {
       setCreated(result);
@@ -139,7 +86,7 @@ const NewClient = () => {
       `🔑 Пароль: ${created.password}`,
       ``,
       ...(planName ? [`✅ Абонемент «${planName}» активирован`, ``] : []),
-      `Ссылка для входа: ${window.location.origin}/portal`,
+      `Ссылка для входа: ${window.location.origin}/portal/login`,
     ];
     const text = lines.join("\n");
     const phone = created.phone.startsWith("8")

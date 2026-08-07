@@ -17,8 +17,12 @@ const ClientLogin = () => {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
 
-  // Генерируем технический email из телефона
-  const getEmail = (p: string) => `${p.replace(/\D/g, '')}@balance.kz`;
+  const normalizePhone = (value: string) => {
+    const digits = value.replace(/\D/g, "");
+    if (digits.length === 11 && digits.startsWith("8")) return `7${digits.slice(1)}`;
+    if (digits.length === 10) return `7${digits}`;
+    return digits;
+  };
 
   const handleAuth = async (type: "login" | "register") => {
     if (!phone) return toast.error("Введите телефон");
@@ -27,8 +31,8 @@ const ClientLogin = () => {
     if (type === "register" && !firstName) return toast.error("Введите имя");
 
     setIsLoading(true);
-    const cleanPhone = phone.replace(/\D/g, '');
-    const email = getEmail(cleanPhone);
+    const cleanPhone = normalizePhone(phone);
+    const email = `${cleanPhone}@balance.kz`;
     const pwd = password;
 
     try {
@@ -62,9 +66,21 @@ const ClientLogin = () => {
 
         toast.success("Регистрация успешна!");
       } else {
-        // Логин
-        const { error } = await supabase.auth.signInWithPassword({ email, password: pwd });
-        if (error) throw error;
+        // Canonical login plus legacy aliases created by older CRM screens.
+        // All new accounts use @balance.kz; the fallbacks keep old clients
+        // able to sign in while their account is migrated by staff actions.
+        const candidates = [email, `${cleanPhone}@balance.local`, `${cleanPhone}@auth.local`];
+        let lastError: Error | null = null;
+        let signedIn = false;
+        for (const candidate of candidates) {
+          const { error } = await supabase.auth.signInWithPassword({ email: candidate, password: pwd });
+          if (!error) {
+            signedIn = true;
+            break;
+          }
+          lastError = error;
+        }
+        if (!signedIn) throw lastError || new Error("Неверный телефон или пароль");
         toast.success("С возвращением!");
       }
       

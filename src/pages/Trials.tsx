@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
-import { createClient } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DataTable } from "@/components/ui/data-table";
@@ -48,47 +47,23 @@ const Trials = () => {
       if (!formData.first_name || !formData.phone) throw new Error("Имя и телефон обязательны");
       
       const cleanPhone = formData.phone.replace(/\D/g, '');
-      const fakeEmail = `${cleanPhone}@balance.local`;
-      const password = `yoga${cleanPhone.slice(-4)}`;
-
-      const tempSupabase = createClient(
-        import.meta.env.VITE_SUPABASE_URL,
-        import.meta.env.VITE_SUPABASE_ANON_KEY,
-        {
-          auth: {
-            persistSession: false,
-            autoRefreshToken: false,
-            detectSessionInUrl: false
-          }
-        }
-      );
-
-      const { data, error } = await tempSupabase.auth.signUp({
-          email: fakeEmail, 
-          password,
-          options: {
-              data: {
-                  first_name: formData.first_name,
-                  last_name: formData.last_name,
-                  phone: formData.phone
-              }
-          }
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Сессия сотрудника истекла. Войди повторно.");
+      const response = await fetch("/api/clients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({
+          action: "create",
+          firstName: formData.first_name,
+          lastName: formData.last_name,
+          phone: cleanPhone,
+          notes: formData.notes,
+          leadStatus: formData.lead_status,
+        }),
       });
-
-      if (error) throw error;
-      
-      if (data.user) {
-          // ИСПРАВЛЕНИЕ: Увеличил задержку до 1000мс, чтобы база точно успела создать профиль
-          await new Promise(resolve => setTimeout(resolve, 1000));
-
-          await supabase.from('profiles').update({
-              phone: formData.phone,
-              first_name: formData.first_name,
-              last_name: formData.last_name,
-              notes: formData.notes,
-              lead_status: formData.lead_status
-          }).eq('id', data.user.id);
-      }
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "Не удалось создать клиента");
+      if (!payload.created) throw new Error("Клиент с этим телефоном уже существует");
     },
     onSuccess: () => {
       toast.success("Клиент создан без абонемента");

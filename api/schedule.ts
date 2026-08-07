@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
+import { ensureClientAccount, normalizeClientPhone } from "./_lib/client-account.js";
 
 const url = process.env.VITE_SUPABASE_URL || "";
 const secret = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
@@ -8,10 +9,7 @@ const adminClient = url && secret
   : null;
 
 const normalizePhone = (value: string) => {
-  const digits = value.replace(/\D/g, "");
-  if (digits.length === 11 && digits.startsWith("8")) return `7${digits.slice(1)}`;
-  if (digits.length === 10) return `7${digits}`;
-  return digits;
+  return normalizeClientPhone(value);
 };
 
 async function requireStaff(req: VercelRequest) {
@@ -77,53 +75,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const lastName = String(req.body?.lastName || "").trim();
       const phone = normalizePhone(String(req.body?.phone || ""));
       const contactEmail = String(req.body?.email || "").trim().toLowerCase();
-      const authEmail = `${phone}@balance.kz`;
       if (!sessionId || !firstName || phone.length < 10) {
         return res.status(400).json({ error: "Укажи имя и корректный телефон" });
       }
-
-      const { data: existingProfiles, error: profilesError } = await adminClient!
-        .from("profiles")
-        .select("id,first_name,last_name,phone")
-        .eq("role", "client")
-        .limit(5000);
-      if (profilesError) throw profilesError;
-      const duplicate = (existingProfiles || []).find((profile) => normalizePhone(profile.phone || "") === phone);
-      if (duplicate) return res.status(409).json({ error: "Клиент с этим телефоном уже существует" });
-
-      const password = `yoga${phone.slice(-4)}`;
-      const { data: created, error: createError } = await adminClient!.auth.admin.createUser({
-        email: authEmail,
-        password,
-        email_confirm: true,
-        user_metadata: { first_name: firstName, last_name: lastName, phone },
+      const account = await ensureClientAccount(adminClient!, {
+        firstName,
+        lastName,
+        phone,
+        contactEmail,
       });
-      if (createError) throw createError;
-
-      try {
-        const { error: profileError } = await adminClient!.from("profiles").upsert({
-          id: created.user.id,
-          first_name: firstName,
-          last_name: lastName || null,
-          phone,
-          email: contactEmail || authEmail,
-          role: "client",
-        });
-        if (profileError) throw profileError;
-
+      const { data: existingBooking, error: existingBookingError } = await adminClient!
+        .from("bookings")
+        .select("id,status")
+        .eq("session_id", sessionId)
+        .eq("user_id", account.id)
+        .maybeSingle();
+      if (existingBookingError) throw existingBookingError;
+      if (existingBooking) {
+        if (!["cancelled", "late_cancel", "absent"].includes(existingBooking.status)) {
+          return res.status(409).json({ error: "Клиент уже записан на это занятие" });
+        }
+        const { error: restoreError } = await adminClient!.from("bookings")
+          .update({ status: "booked" })
+          .eq("id", existingBooking.id);
+        if (restoreError) throw restoreError;
+      } else {
         const { error: bookingError } = await adminClient!.from("bookings").insert({
           session_id: sessionId,
-          user_id: created.user.id,
+          user_id: account.id,
           status: "booked",
         });
         if (bookingError) throw bookingError;
-      } catch (error) {
-        const cleanup = await adminClient!.auth.admin.deleteUser(created.user.id);
-        if (cleanup.error) console.error("Schedule API cleanup failed", cleanup.error);
-        throw error;
       }
 
-      return res.status(200).json({ id: created.user.id, login: phone, temporaryPassword: password });
+      return res.status(account.created ? 201 : 200).json(account);
     }
 
     if (action === "transfer-booking") {
