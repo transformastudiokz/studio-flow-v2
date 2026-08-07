@@ -26,6 +26,100 @@ async function requireStaff(req: VercelRequest) {
   return profile?.is_active !== false && ["owner", "admin"].includes(profile?.role || "") ? user : null;
 }
 
+const almatyDate = (value: string | Date) => new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Almaty", year: "numeric", month: "2-digit", day: "2-digit",
+}).format(new Date(value));
+
+const addCalendarDays = (date: string, days: number) => {
+  const value = new Date(`${date}T00:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+};
+
+async function setBookingAttendanceStatus(bookingId: string, nextStatus: string) {
+  if (!adminClient) throw new Error("Серверный доступ Supabase не настроен");
+  const { data: booking, error: bookingError } = await adminClient
+    .from("bookings")
+    .select("id,user_id,subscription_id,status,session:schedule_sessions(start_time)")
+    .eq("id", bookingId).single();
+  if (bookingError || !booking) throw bookingError || new Error("Запись не найдена");
+  if (booking.status === nextStatus) return { bookingId, subscriptionId: booking.subscription_id };
+  const session = Array.isArray(booking.session) ? booking.session[0] : booking.session;
+  if (!session?.start_time) throw new Error("У занятия не указана дата");
+  const visitDate = almatyDate(session.start_time);
+
+  if (nextStatus === "completed") {
+    let subscription: any = null;
+    if (booking.subscription_id) {
+      const { data, error } = await adminClient.from("user_subscriptions")
+        .select("id,user_id,visits_total,visits_remaining,start_date,end_date,activation_date,is_active,created_at,plan:subscription_plans(duration_days)")
+        .eq("id", booking.subscription_id).single();
+      if (error) throw error;
+      subscription = data;
+    } else {
+      const { data, error } = await adminClient.from("user_subscriptions")
+        .select("id,user_id,visits_total,visits_remaining,start_date,end_date,activation_date,is_active,created_at,plan:subscription_plans(duration_days)")
+        .eq("user_id", booking.user_id).eq("is_active", true).gt("visits_remaining", 0)
+        .lte("start_date", visitDate).or(`end_date.is.null,end_date.gte.${visitDate}`)
+        .order("created_at", { ascending: true }).limit(20);
+      if (error) throw error;
+      // Самый ранний купленный абонемент расходуется первым: пробный не должен
+      // быть пропущен в пользу более нового основного абонемента.
+      subscription = (data || []).sort((a: any, b: any) =>
+        String(a.created_at).localeCompare(String(b.created_at)))[0];
+    }
+    const subscriptionIsEligible = subscription
+      && subscription.user_id === booking.user_id
+      && subscription.is_active !== false
+      && Number(subscription.visits_remaining) > 0
+      && (!subscription.start_date || subscription.start_date <= visitDate)
+      && (!subscription.end_date || subscription.end_date >= visitDate);
+    if (!subscriptionIsEligible) {
+      throw new Error("У клиента нет подходящего действующего абонемента. Сначала оформи абонемент, затем отметь посещение.");
+    }
+    const plan = Array.isArray(subscription.plan) ? subscription.plan[0] : subscription.plan;
+    const activationDate = subscription.activation_date || visitDate;
+    const endDate = subscription.end_date || (Number(plan?.duration_days) > 0
+      ? addCalendarDays(activationDate, Number(plan.duration_days)) : null);
+    const nextRemaining = Math.max(0, Number(subscription.visits_remaining) - 1);
+    const { data: updatedSubscription, error: subscriptionError } = await adminClient
+      .from("user_subscriptions")
+      .update({ visits_remaining: nextRemaining, activation_date: activationDate, end_date: endDate })
+      .eq("id", subscription.id).eq("visits_remaining", subscription.visits_remaining)
+      .select("id").maybeSingle();
+    if (subscriptionError) throw subscriptionError;
+    if (!updatedSubscription) throw new Error("Абонемент уже изменился. Обнови окно и повтори действие.");
+    const { data: updatedBooking, error: statusError } = await adminClient.from("bookings")
+      .update({ status: nextStatus, subscription_id: subscription.id })
+      .eq("id", bookingId).eq("status", booking.status).select("id").maybeSingle();
+    if (statusError || !updatedBooking) {
+      await adminClient.from("user_subscriptions").update({
+        visits_remaining: subscription.visits_remaining,
+        activation_date: subscription.activation_date,
+        end_date: subscription.end_date,
+      }).eq("id", subscription.id).eq("visits_remaining", nextRemaining);
+      throw statusError || new Error("Статус записи уже изменился. Обнови окно.");
+    }
+    return { bookingId, subscriptionId: subscription.id };
+  }
+
+  if (booking.status === "completed" && booking.subscription_id) {
+    const { data: subscription, error } = await adminClient.from("user_subscriptions")
+      .select("id,visits_total,visits_remaining").eq("id", booking.subscription_id).single();
+    if (error) throw error;
+    const restored = subscription.visits_total == null
+      ? Number(subscription.visits_remaining) + 1
+      : Math.min(Number(subscription.visits_total), Number(subscription.visits_remaining) + 1);
+    const { error: restoreError } = await adminClient.from("user_subscriptions")
+      .update({ visits_remaining: restored }).eq("id", subscription.id)
+      .eq("visits_remaining", subscription.visits_remaining);
+    if (restoreError) throw restoreError;
+  }
+  const { error } = await adminClient.from("bookings").update({ status: nextStatus }).eq("id", bookingId);
+  if (error) throw error;
+  return { bookingId, subscriptionId: booking.subscription_id };
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
@@ -33,6 +127,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!staff) return res.status(403).json({ error: "Доступ только сотрудникам студии" });
 
     const action = req.body?.action;
+    if (action === "set-booking-status") {
+      const bookingId = String(req.body?.bookingId || "");
+      const status = String(req.body?.status || "");
+      const allowed = ["booked", "completed", "absent", "cancelled", "late_cancel", "transferred"];
+      if (!bookingId || !allowed.includes(status)) return res.status(400).json({ error: "Некорректный статус записи" });
+      return res.status(200).json(await setBookingAttendanceStatus(bookingId, status));
+    }
     if (action === "request-onefit-sync") {
       const sourceDate = new Intl.DateTimeFormat("en-CA", {
         timeZone: "Asia/Almaty",

@@ -38,7 +38,7 @@ const ClientProfile = () => {
       if (!client?.id) return [];
       const { data } = await supabase
         .from('user_subscriptions')
-        .select('*, plan:subscription_plans(name)')
+        .select('*, plan:subscription_plans(name,duration_days)')
         .eq('user_id', client.id)
         .eq('is_active', true)
         .or('end_date.is.null,end_date.gte.' + new Date().toISOString().split('T')[0]); // Включаем неактивированные
@@ -131,7 +131,11 @@ const ClientProfile = () => {
                             </div>
                           </div>
                           <div className="text-xs opacity-70">
-                            Действует до {sub.end_date ? format(parseISO(sub.end_date), 'dd.MM.yyyy') : "Бессрочно"}
+                            {sub.end_date
+                              ? `Действует до ${format(parseISO(sub.end_date), 'dd.MM.yyyy')}`
+                              : sub.plan?.duration_days
+                                ? `Активируется при первом посещении · ${sub.plan.duration_days} дней`
+                                : "Без ограничения по сроку"}
                           </div>
                       </CardContent>
                    </Card>

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
+import { updateBookingStatus } from "@/lib/booking-status";
 import { format, addDays, addWeeks, isSameDay, startOfWeek, parseISO } from "date-fns";
 import { ru } from "date-fns/locale";
 import { ChevronLeft, ChevronRight, UserPlus, Search, Users, Loader2, Phone, Globe, Trash2 } from "lucide-react";
@@ -79,8 +80,7 @@ const AdminCheckIn = () => {
 
   const updateStatusMutation = useMutation({
     mutationFn: async ({ bookingId, status }: { bookingId: string; status: string }) => {
-      const { error } = await supabase.from("bookings").update({ status }).eq("id", bookingId);
-      if (error) throw error;
+      await updateBookingStatus(bookingId, status);
     },
     onSuccess: () => {
       setPendingBookingId(null);
@@ -94,8 +94,7 @@ const AdminCheckIn = () => {
 
   const deleteBookingMutation = useMutation({
     mutationFn: async (bookingId: string) => {
-      const { error } = await supabase.from("bookings").update({ status: "cancelled" }).eq("id", bookingId);
-      if (error) throw error;
+      await updateBookingStatus(bookingId, "cancelled");
     },
     onSuccess: () => {
       toast.success("Запись удалена");

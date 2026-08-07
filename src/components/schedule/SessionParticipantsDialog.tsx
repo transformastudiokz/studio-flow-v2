@@ -6,6 +6,7 @@ import { AlertCircle, CalendarSync, Loader2, MessageCircle, MoreHorizontal, Plus
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
+import { updateBookingStatus } from "@/lib/booking-status";
 import { fetchClientStatuses, getClientStatusForBooking, type ClientStatus } from "@/lib/client-status";
 import {
   normalizePhone,
@@ -188,8 +189,7 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
 
   const updateStatus = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
-      const { error } = await supabase.from("bookings").update({ status }).eq("id", id);
-      if (error) throw error;
+      await updateBookingStatus(id, status);
     },
     onSuccess: async () => { await refresh(); toast.success("Статус посещения сохранён"); },
     onError: (error: Error) => toast.error(error.message),
@@ -197,8 +197,7 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
 
   const removeBooking = useMutation({
     mutationFn: async (bookingId: string) => {
-      const { error } = await supabase.from("bookings").update({ status: "cancelled" }).eq("id", bookingId);
-      if (error) throw error;
+      await updateBookingStatus(bookingId, "cancelled");
     },
     onSuccess: async () => {
       setDeleteBooking(null);

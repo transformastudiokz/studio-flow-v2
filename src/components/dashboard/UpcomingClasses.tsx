@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
+import { updateBookingStatus } from "@/lib/booking-status";
 import { differenceInMinutes, endOfDay, format, parseISO, startOfDay } from "date-fns";
 import { ArrowRight, Clock, Loader2, MapPin, MessageCircle, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -125,11 +126,7 @@ export const UpcomingClasses = () => {
         }
       }
 
-      const { error } = await supabase
-        .from("bookings")
-        .update({ status })
-        .eq("id", bookingId);
-      if (error) throw error;
+      await updateBookingStatus(bookingId, status);
     },
     onSuccess: () => {
       toast.success("Статус посещения обновлён");

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
+import { updateBookingStatus } from "@/lib/booking-status";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2, Download, X, Plus, Search, Check, MessageCircle, Megaphone, Trash2 } from "lucide-react";
@@ -187,8 +188,7 @@ const Attendance = () => {
 
   const deleteBookingMutation = useMutation({
     mutationFn: async (bookingId: string) => {
-      const { error } = await supabase.from('bookings').update({ status: 'cancelled' }).eq('id', bookingId);
-      if (error) throw error;
+      await updateBookingStatus(bookingId, 'cancelled');
     },
     onSuccess: () => {
       toast.success("Запись удалена");
@@ -212,8 +212,7 @@ const Attendance = () => {
                 if (!confirmCancel) throw new Error("Отмена прервана администратором");
             }
         }
-        const { error } = await supabase.from('bookings').update({ status }).eq('id', id);
-        if (error) throw error;
+        await updateBookingStatus(id, status);
     },
     onSuccess: () => {
         toast.success("Статус изменен");
