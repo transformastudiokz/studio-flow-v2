@@ -11,7 +11,8 @@ import {
   endOfDay, 
   parseISO, 
   startOfWeek, 
-  addWeeks
+  addWeeks,
+  differenceInMinutes
 } from "date-fns";
 import { ru } from "date-fns/locale";
 import { Loader2, User, Check, Clock, ChevronLeft, ChevronRight, XCircle } from "lucide-react";
@@ -77,7 +78,7 @@ const ClientSchedule = () => {
       const { data, error } = await supabase
         .from('schedule_sessions')
         .select(`
-            id, start_time, end_time, capacity, booking_status, booking_closed_reason, is_client_visible,
+            id, start_time, end_time, capacity, room, booking_status, booking_closed_reason, is_client_visible,
             class_type:class_types(name, color, description),
             coach:coaches(name),
             my_booking:bookings(id, user_id, subscription_id, status),
@@ -90,8 +91,21 @@ const ClientSchedule = () => {
 
       if (error) throw error;
 
+      const sessionIds = data.map((item: any) => item.id);
+      const { data: oneFitCounts, error: oneFitError } = sessionIds.length
+        ? await supabase.rpc('get_client_onefit_counts', { p_session_ids: sessionIds })
+        : { data: [], error: null };
+
+      if (oneFitError) throw oneFitError;
+
+      const oneFitCountBySession = new Map(
+        (oneFitCounts || []).map((row: any) => [row.session_id, Number(row.bookings_count) || 0]),
+      );
+
       return data.map((item: any) => {
-          const totalBooked = (item.all_bookings || []).filter((booking: any) => occupiesPlace(booking.status)).length;
+          const crmBooked = (item.all_bookings || []).filter((booking: any) => occupiesPlace(booking.status)).length;
+          const oneFitBooked = oneFitCountBySession.get(item.id) || 0;
+          const totalBooked = crmBooked + oneFitBooked;
           const myBooking = item.my_booking?.find((booking: any) =>
             booking.user_id === user?.id && occupiesPlace(booking.status),
           );
@@ -99,6 +113,8 @@ const ClientSchedule = () => {
           return {
             ...item,
             bookings_count: totalBooked,
+            crm_bookings_count: crmBooked,
+            onefit_bookings_count: oneFitBooked,
             is_booked_by_me: !!myBooking,
             my_booking_id: myBooking?.id,
             my_booking_status: myBooking?.status,
@@ -231,7 +247,16 @@ const ClientSchedule = () => {
           ) : (
             classes.map((session: any) => {
               const startDate = parseISO(session.start_time);
+              const endDate = session.end_time ? parseISO(session.end_time) : null;
+              const durationMinutes = endDate ? Math.max(0, differenceInMinutes(endDate, startDate)) : null;
               const isFull = session.seats_left === 0;
+              const coachShortName = formatCoachShortName(session.coach?.name);
+              const coachInitials = coachShortName
+                .split(/\s+/)
+                .map((part: string) => part.replace('.', '')[0])
+                .filter(Boolean)
+                .slice(0, 2)
+                .join('') || 'Т';
               const cancellationAllowed = cancellationMinutes !== null
                 && cancellationMinutes !== undefined
                 && canClientCancel(startDate, cancellationMinutes);
@@ -239,52 +264,40 @@ const ClientSchedule = () => {
               return (
                 <Card 
                     key={session.id} 
-                    className={cn("client-surface client-focus overflow-hidden transition-shadow hover:shadow-md", session.booking_status === 'cancelled' ? "bg-[#ece8df] text-slate-600" : session.booking_status === 'closed' ? "bg-[#f5f3ef]" : "")}
+                    className={cn("client-surface client-focus overflow-hidden border-[#ded9cf] bg-[#fffefb] shadow-[0_5px_18px_rgba(48,58,51,0.07)] transition-shadow hover:shadow-[0_7px_22px_rgba(48,58,51,0.1)]", session.booking_status === 'cancelled' ? "bg-[#ece8df] text-slate-600" : session.booking_status === 'closed' ? "bg-[#f5f3ef]" : "")}
                     onClick={() => setSelectedClassInfo(session.class_type)} // ОТКРЫВАЕМ ИНФО
                 >
-                  <div className="flex h-full">
-                      <div className="w-1.5 shrink-0" style={{ backgroundColor: session.class_type?.color || '#3b82f6' }} />
-                      
-                      <div className="min-w-0 flex-1 p-3 min-[480px]:grid min-[480px]:grid-cols-[minmax(0,1fr)_8.5rem] min-[480px]:items-center min-[480px]:gap-3">
-                        <div className="min-w-0 overflow-hidden">
-                            <div className="mb-1 flex min-w-0 flex-nowrap items-center gap-1.5">
-                                <div className="inline-flex shrink-0 items-center whitespace-nowrap rounded-md bg-gray-100 px-1.5 py-0.5 text-xs font-bold tabular-nums text-primary">
-                                    <Clock className="w-3 h-3 mr-1" />
-                                    {format(startDate, 'HH:mm')}
-                                    {session.end_time && <span className="text-gray-400 font-normal mx-0.5">–</span>}
-                                    {session.end_time && format(parseISO(session.end_time), 'HH:mm')}
-                                </div>
-                                <div className="flex min-w-0 items-center gap-1">
-                                    {!isFull ? (
-                                        <span className={cn(
-                                            "shrink-0 whitespace-nowrap rounded-md px-1.5 py-0.5 text-[10px] font-semibold",
-                                            session.seats_left <= 3 ? "text-orange-600 bg-orange-50" : "text-green-600 bg-green-50"
-                                        )}>
-                                            {session.seats_left} свободно
-                                        </span>
-                                    ) : (
-                                        <span className="shrink-0 whitespace-nowrap rounded-md bg-red-50 px-1.5 py-0.5 text-[10px] font-medium text-red-600">Мест нет</span>
-                                    )}
-                                </div>
-                            </div>
-
-                            <button type="button" className="client-focus block w-full min-w-0 text-left" onClick={() => setSelectedClassInfo(session.class_type)}>
-                              <h3 className="line-clamp-2 break-words text-sm font-bold leading-[1.25]" title={session.class_type?.name || ""}>
-                                {session.class_type?.name}
-                              </h3>
-                            </button>
-                            {session.booking_status !== 'open' && <p className="mt-1 text-[10px] font-semibold text-slate-600">{session.booking_status === 'cancelled' ? "Занятие отменено" : "Запись закрыта"}{session.booking_closed_reason ? ` · ${session.booking_closed_reason}` : ""}</p>}
-                            <p className="mt-1 flex min-w-0 items-center gap-1 text-xs text-gray-500" title={session.coach?.name || "Тренер"}>
-                                <User className="h-3 w-3 shrink-0" />
-                                <span className="truncate">{formatCoachShortName(session.coach?.name)}</span>
-                            </p>
+                  <div className="grid min-w-0 grid-cols-[4.25rem_minmax(0,1fr)] gap-x-3 p-3.5 min-[420px]:grid-cols-[4.75rem_minmax(0,1fr)] min-[420px]:gap-x-4">
+                      <div className="flex min-w-0 flex-col items-start">
+                        <time className="whitespace-nowrap text-[17px] font-bold leading-5 tabular-nums text-[#2f3a33]">
+                          {format(startDate, 'HH:mm')}
+                        </time>
+                        <span className="mt-1 whitespace-nowrap text-[11px] font-medium text-[#858880]">
+                          {durationMinutes !== null ? `${durationMinutes} мин` : 'Время уточняется'}
+                        </span>
+                        <div aria-label={`Тренер ${coachShortName}`} className="mt-3 flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#d7dfd7] bg-[#e8f0e9] text-sm font-semibold text-[#476e5a]">
+                          {coachInitials}
                         </div>
+                      </div>
 
-                        <div className="mt-2 w-full min-w-0 min-[480px]:mt-0" onClick={(e) => e.stopPropagation()}>
+                      <div className="min-w-0">
+                        <button type="button" className="client-focus block w-full min-w-0 text-left" onClick={() => setSelectedClassInfo(session.class_type)}>
+                          <h3 className="line-clamp-2 break-words text-[17px] font-bold leading-[1.22] text-[#202721]" title={session.class_type?.name || ""}>
+                            {session.class_type?.name}
+                          </h3>
+                        </button>
+                        <p className="mt-1.5 flex min-w-0 items-center gap-1.5 text-sm text-[#52695a]" title={session.coach?.name || "Тренер"}>
+                          <User className="h-3.5 w-3.5 shrink-0" />
+                          <span className="truncate font-medium">{coachShortName}</span>
+                        </p>
+                        {session.room ? <p className="mt-0.5 truncate text-xs text-[#858880]">{session.room}</p> : null}
+                        {session.booking_status !== 'open' && <p className="mt-1 text-[11px] font-semibold text-[#6f706b]">{session.booking_status === 'cancelled' ? "Занятие отменено" : "Запись закрыта"}{session.booking_closed_reason ? ` · ${session.booking_closed_reason}` : ""}</p>}
+
+                        <div className="mt-3 grid min-w-0 grid-cols-1 gap-2 min-[360px]:grid-cols-[minmax(0,1fr)_auto]" onClick={(e) => e.stopPropagation()}>
                            {/* e.stopPropagation() ВАЖНО: Чтобы клик по кнопке не открывал инфо */}
                            {session.is_booked_by_me ? (
                                 session.my_booking_status === 'late_cancel' ? (
-                                    <span className="flex h-11 w-full items-center justify-center whitespace-nowrap rounded-xl border border-red-200 bg-red-50 px-3 text-xs font-medium text-red-600">
+                                    <span className="flex h-11 w-full items-center justify-center whitespace-nowrap rounded-xl border border-[#dfc7bd] bg-[#f7ebe6] px-3 text-xs font-medium text-[#8e5846]">
                                         Поздняя отмена
                                     </span>
                                 ) : (
@@ -327,6 +340,12 @@ const ClientSchedule = () => {
                                 {pendingSessionId === session.id ? <Loader2 className="w-3 h-3 animate-spin" /> : "Записаться"}
                                 </Button>
                             )}
+                            <span className={cn(
+                              "flex h-11 min-w-[5.25rem] items-center justify-center whitespace-nowrap rounded-xl px-3 text-xs font-semibold",
+                              isFull ? "bg-[#ece9e2] text-[#777771]" : session.seats_left <= 3 ? "bg-[#fbf2da] text-[#866725]" : "bg-[#e8f0e9] text-[#476e5a]",
+                            )}>
+                              {isFull ? "Нет мест" : `${session.seats_left} свободно`}
+                            </span>
                         </div>
                       </div>
                   </div>
