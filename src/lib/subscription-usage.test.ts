@@ -14,8 +14,8 @@ describe("calculateRemainingVisits", () => {
     expect(calculateRemainingVisits(null, 12, null)).toBeNull();
   });
 
-  it("reserves a visit as soon as a client books", () => {
-    expect(DEDUCTED_BOOKING_STATUSES).toContain("booked");
-    expect(calculateRemainingVisits(8, 2, 8)).toBe(6);
+  it("does not spend a visit while the client is only booked", () => {
+    expect(DEDUCTED_BOOKING_STATUSES).not.toContain("booked");
+    expect(DEDUCTED_BOOKING_STATUSES).toEqual(["completed", "absent", "late_cancel"]);
   });
 });

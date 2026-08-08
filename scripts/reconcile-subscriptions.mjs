@@ -47,7 +47,7 @@ for (let index = 0; index < userIds.length; index += 100) {
   bookings.push(...await allRows(() => db.from("bookings")
     .select("id,user_id,status,subscription_id,session:schedule_sessions(start_time)")
     .in("user_id", ids)
-    .in("status", ["booked", "completed", "absent", "late_cancel"])));
+    .in("status", ["completed", "absent", "late_cancel"])));
 }
 
 const subscriptionsByUser = new Map();

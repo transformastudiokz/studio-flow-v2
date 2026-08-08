@@ -1,6 +1,7 @@
-// Занятие резервируется в момент записи. Возврат происходит только при обычной
-// отмене; посещение, неявка и поздняя отмена остаются списанными.
-export const DEDUCTED_BOOKING_STATUSES = ["booked", "completed", "absent", "late_cancel"] as const;
+// Запись резервирует место в группе, но не расходует занятие из абонемента.
+// Списание происходит только после фактического результата занятия:
+// посещение, неявка или поздняя отмена.
+export const DEDUCTED_BOOKING_STATUSES = ["completed", "absent", "late_cancel"] as const;
 
 export function calculateRemainingVisits(
   visitsTotal: number | null,
