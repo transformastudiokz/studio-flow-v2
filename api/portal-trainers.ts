@@ -13,7 +13,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const [{ data: profiles, error: profileError }, { data: coaches, error: coachError }] = await Promise.all([
       adminClient.from("profiles").select("id,first_name,last_name").eq("role", "trainer").eq("is_active", true),
-      adminClient.from("coaches").select("id,user_id,name,photo_url,description,is_active,specializations:coach_class_types(class_type:class_types(name,color))").eq("is_active", true),
+      adminClient.from("coaches").select("id,user_id,name,photo_url,is_active,specializations:coach_class_types(class_type:class_types(name,color))").eq("is_active", true),
     ]);
     if (profileError) throw profileError;
     if (coachError) throw coachError;
@@ -27,7 +27,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         user_id: profile.id,
         display_name: `${firstName}${lastInitial ? ` ${lastInitial}.` : ""}`,
         photo_url: coach?.photo_url || null,
-        description: coach?.description || null,
+        description: null,
         specializations: coach?.specializations || [],
       };
     }).sort((left, right) => left.display_name.localeCompare(right.display_name, "ru"));
