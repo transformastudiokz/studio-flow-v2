@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { canClientCancel, formatCancellationCutoff, parseCancellationMinutes } from "../src/lib/cancellation";
-import { calculateRemainingVisits, CHARGED_BOOKING_STATUSES } from "../src/lib/subscription-usage";
+import { canClientCancel, formatCancellationCutoff, parseCancellationMinutes } from "../src/lib/cancellation.js";
+import { calculateRemainingVisits, CHARGED_BOOKING_STATUSES } from "../src/lib/subscription-usage.js";
 import { createClient } from "@supabase/supabase-js";
 import { ensureClientAccount, normalizeClientPhone } from "./_lib/client-account.js";
 
