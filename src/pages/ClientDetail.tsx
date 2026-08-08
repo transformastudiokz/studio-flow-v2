@@ -5,14 +5,14 @@ import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, User, Phone, Mail, Calendar, CreditCard, History, Edit, Trash2, CalendarSync } from "lucide-react";
+import { ArrowLeft, User, Phone, Mail, Calendar, CreditCard, History, Edit, Trash2, CalendarSync, ChevronRight, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { format, parseISO } from "date-fns";
+import { addDays, format, parseISO } from "date-fns";
 import { ru } from "date-fns/locale";
 import { getSubscriptionState, subscriptionStateLabel } from "@/lib/subscription-state";
 
@@ -23,6 +23,8 @@ export default function ClientDetail() {
   const queryClient = useQueryClient();
   const [isSellModalOpen, setIsSellModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [selectedSubscription, setSelectedSubscription] = useState<any>(null);
+  const [subscriptionForm, setSubscriptionForm] = useState({ sale_date: "", activation_date: "", end_date: "" });
   const [selectedPlanId, setSelectedPlanId] = useState("");
   const [editForm, setEditForm] = useState({
     first_name: "",
@@ -217,6 +219,59 @@ export default function ClientDetail() {
     onError: (error: any) => {
       toast({ title: "Не удалось сохранить", description: error.message, variant: "destructive" });
     },
+  });
+
+  const openSubscription = (subscription: any) => {
+    const sale = subscriptionSales.find((item: any) => item.subscription_id === subscription.id);
+    setSelectedSubscription(subscription);
+    setSubscriptionForm({
+      sale_date: subscription.start_date
+        ? format(parseISO(subscription.start_date), "yyyy-MM-dd")
+        : sale?.occurred_at
+          ? format(parseISO(sale.occurred_at), "yyyy-MM-dd")
+          : format(parseISO(subscription.created_at), "yyyy-MM-dd"),
+      activation_date: subscription.activation_date ? format(parseISO(subscription.activation_date), "yyyy-MM-dd") : "",
+      end_date: subscription.end_date ? format(parseISO(subscription.end_date), "yyyy-MM-dd") : "",
+    });
+  };
+
+  const handleActivationDateChange = (activationDate: string) => {
+    const durationDays = Number(selectedSubscription?.plan?.duration_days || 0);
+    setSubscriptionForm({
+      ...subscriptionForm,
+      activation_date: activationDate,
+      end_date: activationDate && durationDays > 0
+        ? format(addDays(parseISO(activationDate), durationDays - 1), "yyyy-MM-dd")
+        : subscriptionForm.end_date,
+    });
+  };
+
+  const updateSubscriptionMutation = useMutation({
+    mutationFn: async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      const response = await fetch("/api/clients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token || ""}` },
+        body: JSON.stringify({
+          action: "update-subscription",
+          subscriptionId: selectedSubscription?.id,
+          saleDate: subscriptionForm.sale_date,
+          activationDate: subscriptionForm.activation_date || null,
+          endDate: subscriptionForm.end_date || null,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Не удалось обновить абонемент");
+      return result;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["client_subscriptions", id] });
+      await queryClient.invalidateQueries({ queryKey: ["clients_with_subs"] });
+      await queryClient.invalidateQueries({ queryKey: ["user_subscriptions_full"] });
+      setSelectedSubscription(null);
+      toast({ title: "Абонемент обновлён", description: "Новые даты сохранены" });
+    },
+    onError: (error: any) => toast({ title: "Не удалось сохранить", description: error.message, variant: "destructive" }),
   });
 
   // Продажа абонемента
@@ -488,26 +543,34 @@ export default function ClientDetail() {
                       const sale = subscriptionSales.find((item: any) => item.subscription_id === sub.id);
                       const price = sale?.amount ?? sub.plan?.price;
                       return (
-                      <div key={sub.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
+                      <button
+                        key={sub.id}
+                        type="button"
+                        onClick={() => openSubscription(sub)}
+                        className="flex w-full flex-wrap items-center justify-between gap-3 py-3 text-left transition-colors first:pt-0 last:pb-0 hover:bg-muted/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                      >
                         <div>
                           <div className="font-medium">{sub.plan?.name}</div>
                           <div className="mt-0.5 text-sm text-muted-foreground">
                             Осталось {sub.visits_remaining} из {sub.visits_total} · {Number(price || 0).toLocaleString('ru-RU')} ₸
                           </div>
                           <div className="mt-0.5 text-xs text-muted-foreground">
-                            Куплен {sale?.occurred_at ? format(parseISO(sale.occurred_at), 'dd.MM.yyyy') : format(parseISO(sub.created_at), 'dd.MM.yyyy')}
+                            Куплен {sub.start_date ? format(parseISO(sub.start_date), 'dd.MM.yyyy') : sale?.occurred_at ? format(parseISO(sale.occurred_at), 'dd.MM.yyyy') : format(parseISO(sub.created_at), 'dd.MM.yyyy')}
                             {' · '}Активирован {sub.activation_date ? format(parseISO(sub.activation_date), 'dd.MM.yyyy') : 'не активирован'}
                           </div>
                         </div>
-                        <div className="text-right">
+                        <div className="flex items-center gap-3 text-right">
+                          <div>
                           <div className={`text-sm font-medium ${state === 'active' ? 'text-green-600' : state === 'purchased' ? 'text-blue-600' : 'text-gray-500'}`}>
                             {subscriptionStateLabel[state]}
                           </div>
                           <div className="text-xs text-muted-foreground">
                             {sub.end_date ? `до ${format(parseISO(sub.end_date), 'dd.MM.yyyy')} включительно` : 'срок начнётся при активации'}
                           </div>
+                          </div>
+                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
                         </div>
-                      </div>
+                      </button>
                     )})}
                   </div>
                 </CardContent>
@@ -539,6 +602,40 @@ export default function ClientDetail() {
           </Card>
         </div>
       </div>
+
+      <Dialog open={Boolean(selectedSubscription)} onOpenChange={(open) => !open && setSelectedSubscription(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{selectedSubscription?.plan?.name || "Абонемент"}</DialogTitle>
+            <DialogDescription>
+              Количество занятий и стоимость сохранены без изменений. Здесь можно исправить даты или продлить срок для переноса.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="subscription-sale-date">Дата продажи</Label>
+              <Input id="subscription-sale-date" type="date" value={subscriptionForm.sale_date} onChange={(event) => setSubscriptionForm({ ...subscriptionForm, sale_date: event.target.value })} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="subscription-activation-date">Дата активации</Label>
+              <Input id="subscription-activation-date" type="date" value={subscriptionForm.activation_date} onChange={(event) => handleActivationDateChange(event.target.value)} />
+              <p className="text-xs text-muted-foreground">Можно оставить пустой, если клиент ещё не начал пользоваться абонементом.</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="subscription-end-date">Действует включительно до</Label>
+              <Input id="subscription-end-date" type="date" value={subscriptionForm.end_date} onChange={(event) => setSubscriptionForm({ ...subscriptionForm, end_date: event.target.value })} />
+              <p className="text-xs text-muted-foreground">Для уважительного переноса укажи новую крайнюю дату вручную.</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSelectedSubscription(null)} disabled={updateSubscriptionMutation.isPending}>Отмена</Button>
+            <Button onClick={() => updateSubscriptionMutation.mutate()} disabled={!subscriptionForm.sale_date || updateSubscriptionMutation.isPending}>
+              {updateSubscriptionMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Сохранить
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
