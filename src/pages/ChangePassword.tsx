@@ -23,11 +23,21 @@ export default function ChangePassword() {
     try {
       const { error: authError } = await supabase.auth.updateUser({ password });
       if (authError) throw authError;
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Сессия завершилась. Войдите снова.");
-      const { error } = await supabase.from("profiles").update({ must_change_password: false }).eq("id", user.id);
-      if (error) throw error;
-      const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error("Сессия завершилась. Войдите снова.");
+      const { data: profile } = await supabase.from("profiles").select("role").eq("id", session.user.id).single();
+      if (profile?.role === "trainer") {
+        const response = await fetch("/api/trainer-auth", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+          body: JSON.stringify({ action: "password-changed" }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error || "Не удалось завершить смену пароля");
+      } else {
+        const { error } = await supabase.from("profiles").update({ must_change_password: false }).eq("id", session.user.id);
+        if (error) throw error;
+      }
       toast.success("Пароль сохранён");
       navigate(profile?.role === "trainer" ? "/trainer/schedule" : "/dashboard", { replace: true });
     } catch (error) {

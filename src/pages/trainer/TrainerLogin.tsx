@@ -19,23 +19,33 @@ const TrainerLogin = () => {
     setIsLoading(true);
     try {
       const cleanLogin = login.trim();
-      const email = cleanLogin.includes("@")
-        ? cleanLogin.toLocaleLowerCase("ru-RU")
-        : `${cleanLogin.replace(/\D/g, "")}@balance.kz`;
+      const resolveResponse = await fetch("/api/trainer-auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "resolve-login", identifier: cleanLogin }),
+      });
+      const resolved = await resolveResponse.json().catch(() => ({}));
+      if (!resolveResponse.ok || !resolved.email) throw new Error(resolved.error || "Неверный e-mail, телефон или пароль");
+      const email = resolved.email as string;
       const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) throw error;
+      if (error) throw new Error("Неверный e-mail, телефон или пароль");
 
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Ошибка авторизации");
 
-      const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
+      const { data: profile } = await supabase.from('profiles').select('role,must_change_password,is_active').eq('id', user.id).single();
       if (profile?.role !== 'trainer') {
         await supabase.auth.signOut();
         throw new Error("У этого аккаунта нет прав тренера");
       }
 
+      if (profile.is_active === false) {
+        await supabase.auth.signOut();
+        throw new Error("Доступ сотрудника отключён. Обратитесь к управляющему");
+      }
+
       toast.success("Добро пожаловать!");
-      navigate("/trainer");
+      navigate(profile.must_change_password ? "/change-password" : "/trainer", { replace: true });
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : "Ошибка входа");
     } finally {
