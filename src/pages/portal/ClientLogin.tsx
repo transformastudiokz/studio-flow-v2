@@ -8,6 +8,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Loader2, Phone, Lock, User } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import {
+  getClientLoginEmails,
+  normalizeClientRegistrationPhone,
+} from "@/lib/client-login";
 
 const ClientLogin = () => {
   const navigate = useNavigate();
@@ -17,13 +21,6 @@ const ClientLogin = () => {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
 
-  const normalizePhone = (value: string) => {
-    const digits = value.replace(/\D/g, "");
-    if (digits.length === 11 && digits.startsWith("8")) return `7${digits.slice(1)}`;
-    if (digits.length === 10) return `7${digits}`;
-    return digits;
-  };
-
   const handleAuth = async (type: "login" | "register") => {
     if (!phone) return toast.error("Введите телефон");
     if (!password) return toast.error("Введите пароль");
@@ -31,7 +28,7 @@ const ClientLogin = () => {
     if (type === "register" && !firstName) return toast.error("Введите имя");
 
     setIsLoading(true);
-    const cleanPhone = normalizePhone(phone);
+    const cleanPhone = normalizeClientRegistrationPhone(phone);
     const email = `${cleanPhone}@balance.kz`;
     const pwd = password;
 
@@ -69,7 +66,7 @@ const ClientLogin = () => {
         // Canonical login plus legacy aliases created by older CRM screens.
         // All new accounts use @balance.kz; the fallbacks keep old clients
         // able to sign in while their account is migrated by staff actions.
-        const candidates = [email, `${cleanPhone}@balance.local`, `${cleanPhone}@auth.local`];
+        const candidates = getClientLoginEmails(phone);
         let lastError: Error | null = null;
         let signedIn = false;
         for (const candidate of candidates) {
