@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { canClientCancel, formatCancellationCutoff, parseCancellationMinutes } from "../src/lib/cancellation";
+import { calculateRemainingVisits, CHARGED_BOOKING_STATUSES } from "../src/lib/subscription-usage";
 import { createClient } from "@supabase/supabase-js";
 import { ensureClientAccount, normalizeClientPhone } from "./_lib/client-account.js";
 
@@ -45,6 +46,45 @@ const addCalendarDays = (date: string, days: number) => {
   return value.toISOString().slice(0, 10);
 };
 
+async function reconcileSubscriptionUsage(subscriptionId: string, fallbackActivationDate?: string) {
+  if (!adminClient) throw new Error("Серверный доступ Supabase не настроен");
+  const { data: subscription, error: subscriptionError } = await adminClient
+    .from("user_subscriptions")
+    .select("id,visits_total,visits_remaining,activation_date,end_date,is_active,plan:subscription_plans(duration_days)")
+    .eq("id", subscriptionId)
+    .single();
+  if (subscriptionError || !subscription) throw subscriptionError || new Error("Абонемент не найден");
+
+  const { count, error: countError } = await adminClient
+    .from("bookings")
+    .select("id", { count: "exact", head: true })
+    .eq("subscription_id", subscriptionId)
+    .in("status", [...CHARGED_BOOKING_STATUSES]);
+  if (countError) throw countError;
+
+  const remaining = calculateRemainingVisits(
+    subscription.visits_total == null ? null : Number(subscription.visits_total),
+    count || 0,
+    subscription.visits_remaining == null ? null : Number(subscription.visits_remaining),
+  );
+  const plan = Array.isArray(subscription.plan) ? subscription.plan[0] : subscription.plan;
+  const activationDate = subscription.activation_date || ((count || 0) > 0 ? fallbackActivationDate || null : null);
+  const endDate = subscription.end_date || (activationDate && Number(plan?.duration_days) > 0
+    ? addCalendarDays(activationDate, Number(plan.duration_days) - 1)
+    : null);
+  const today = almatyDate(new Date());
+  const isActive = (remaining == null || remaining > 0)
+    && (!endDate || endDate >= today);
+
+  const { error: updateError } = await adminClient.from("user_subscriptions").update({
+    visits_remaining: remaining,
+    activation_date: activationDate,
+    end_date: endDate,
+    is_active: isActive,
+  }).eq("id", subscriptionId);
+  if (updateError) throw updateError;
+}
+
 async function setBookingAttendanceStatus(bookingId: string, nextStatus: string) {
   if (!adminClient) throw new Error("Серверный доступ Supabase не настроен");
   const { data: booking, error: bookingError } = await adminClient
@@ -56,17 +96,12 @@ async function setBookingAttendanceStatus(bookingId: string, nextStatus: string)
   const session = Array.isArray(booking.session) ? booking.session[0] : booking.session;
   if (!session?.start_time) throw new Error("У занятия не указана дата");
   const visitDate = almatyDate(session.start_time);
-  const chargedStatuses = new Set(["completed", "absent", "late_cancel"]);
+  const chargedStatuses = new Set<string>(CHARGED_BOOKING_STATUSES);
   const wasCharged = chargedStatuses.has(booking.status);
   const willCharge = chargedStatuses.has(nextStatus);
 
-  if (wasCharged === willCharge) {
-    const { error } = await adminClient.from("bookings").update({ status: nextStatus }).eq("id", bookingId);
-    if (error) throw error;
-    return { bookingId, subscriptionId: booking.subscription_id };
-  }
-
-  if (willCharge) {
+  let targetSubscriptionId: string | null = booking.subscription_id;
+  if (willCharge && !wasCharged) {
     let subscription: any = null;
     if (booking.subscription_id) {
       const { data, error } = await adminClient.from("user_subscriptions")
@@ -95,48 +130,28 @@ async function setBookingAttendanceStatus(bookingId: string, nextStatus: string)
     if (!subscriptionIsEligible) {
       throw new Error("У клиента нет подходящего действующего абонемента. Сначала оформи абонемент, затем отметь посещение.");
     }
-    const plan = Array.isArray(subscription.plan) ? subscription.plan[0] : subscription.plan;
-    const activationDate = subscription.activation_date || visitDate;
-    const endDate = subscription.end_date || (Number(plan?.duration_days) > 0
-      ? addCalendarDays(activationDate, Number(plan.duration_days) - 1) : null);
-    const nextRemaining = Math.max(0, Number(subscription.visits_remaining) - 1);
-    const { data: updatedSubscription, error: subscriptionError } = await adminClient
-      .from("user_subscriptions")
-      .update({ visits_remaining: nextRemaining, activation_date: activationDate, end_date: endDate, is_active: nextRemaining > 0 })
-      .eq("id", subscription.id).eq("visits_remaining", subscription.visits_remaining)
-      .select("id").maybeSingle();
-    if (subscriptionError) throw subscriptionError;
-    if (!updatedSubscription) throw new Error("Абонемент уже изменился. Обнови окно и повтори действие.");
-    const { data: updatedBooking, error: statusError } = await adminClient.from("bookings")
-      .update({ status: nextStatus, subscription_id: subscription.id })
-      .eq("id", bookingId).eq("status", booking.status).select("id").maybeSingle();
-    if (statusError || !updatedBooking) {
-      await adminClient.from("user_subscriptions").update({
-        visits_remaining: subscription.visits_remaining,
-        activation_date: subscription.activation_date,
-        end_date: subscription.end_date,
-        is_active: subscription.is_active,
-      }).eq("id", subscription.id).eq("visits_remaining", nextRemaining);
-      throw statusError || new Error("Статус записи уже изменился. Обнови окно.");
-    }
-    return { bookingId, subscriptionId: subscription.id };
+    targetSubscriptionId = subscription.id;
   }
 
-  if (wasCharged && booking.subscription_id) {
-    const { data: subscription, error } = await adminClient.from("user_subscriptions")
-      .select("id,visits_total,visits_remaining,end_date").eq("id", booking.subscription_id).single();
-    if (error) throw error;
-    const restored = subscription.visits_total == null
-      ? Number(subscription.visits_remaining) + 1
-      : Math.min(Number(subscription.visits_total), Number(subscription.visits_remaining) + 1);
-    const { error: restoreError } = await adminClient.from("user_subscriptions")
-      .update({ visits_remaining: restored, is_active: !subscription.end_date || subscription.end_date >= visitDate }).eq("id", subscription.id)
-      .eq("visits_remaining", subscription.visits_remaining);
-    if (restoreError) throw restoreError;
+  const updatePayload = targetSubscriptionId
+    ? { status: nextStatus, subscription_id: targetSubscriptionId }
+    : { status: nextStatus };
+  const { data: updatedBooking, error: statusError } = await adminClient.from("bookings")
+    .update(updatePayload)
+    .eq("id", bookingId)
+    .eq("status", booking.status)
+    .select("id")
+    .maybeSingle();
+  if (statusError || !updatedBooking) {
+    throw statusError || new Error("Статус записи уже изменился. Обнови окно.");
   }
-  const { error } = await adminClient.from("bookings").update({ status: nextStatus }).eq("id", bookingId);
-  if (error) throw error;
-  return { bookingId, subscriptionId: booking.subscription_id };
+
+  // Остаток всегда выводим из фактических списываемых записей. Это делает
+  // повторную смену статуса безопасной и не даёт возвратить 9-е занятие в абонемент на 8.
+  if (targetSubscriptionId) {
+    await reconcileSubscriptionUsage(targetSubscriptionId, visitDate);
+  }
+  return { bookingId, subscriptionId: targetSubscriptionId };
 }
 
 async function cancelOwnBooking(userId: string, bookingId: string) {
