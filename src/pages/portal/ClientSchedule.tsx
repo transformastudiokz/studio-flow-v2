@@ -12,8 +12,7 @@ import {
   endOfDay, 
   parseISO, 
   startOfWeek, 
-  addWeeks,
-  differenceInMinutes 
+  addWeeks
 } from "date-fns";
 import { ru } from "date-fns/locale";
 import { Loader2, User, Check, Clock, ChevronLeft, ChevronRight, XCircle } from "lucide-react";
@@ -50,20 +49,6 @@ const ClientSchedule = () => {
     setWeekOffset(0);
     setSelectedDate(new Date());
   };
-
-  // 0. Загрузка настроек (лимит отмены)
-  const { data: cancellationLimit = 60 } = useQuery({
-    queryKey: ['cancellation_limit'],
-    queryFn: async () => {
-      try {
-        const { data, error } = await supabase.from('studio_info').select('value').eq('key', 'cancellation_minutes').single();
-        if (error || !data) return 60;
-        return parseInt(data.value) || 60;
-      } catch (e) {
-        return 60;
-      }
-    }
-  });
 
   // 1. Загрузка расписания
   const { data: classes = [], isLoading } = useQuery({
@@ -161,28 +146,19 @@ const ClientSchedule = () => {
 
   // 3. Отмена записи
   const cancelMutation = useMutation({
-    mutationFn: async ({ bookingId, subscriptionId, startTime }: { bookingId: string, subscriptionId: string, startTime: string }) => {
-        const sessionDate = parseISO(startTime);
-        const now = new Date();
-        const minutesLeft = differenceInMinutes(sessionDate, now);
-
-        if (minutesLeft < cancellationLimit) {
-            // Поздняя отмена: меняем статус, занятие НЕ возвращается
-            const { error } = await supabase.from('bookings').update({ status: 'late_cancel' }).eq('id', bookingId);
-            if (error) throw error;
-            return { isLate: true };
-        }
-
-        const { error: cancelError } = await supabase.from('bookings').update({ status: 'cancelled' }).eq('id', bookingId);
-        if (cancelError) throw cancelError;
-        return { isLate: false };
+    mutationFn: async ({ bookingId }: { bookingId: string, subscriptionId: string, startTime: string }) => {
+        const { data: { session } } = await supabase.auth.getSession();
+        const response = await fetch('/api/schedule', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+          body: JSON.stringify({ action: 'cancel-own-booking', bookingId }),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Не удалось отменить запись');
+        return result;
     },
-    onSuccess: (result: any) => {
-        if (result?.isLate) {
-            toast.warning(`Поздняя отмена. Занятие не возвращается (менее ${cancellationLimit} мин до начала).`);
-        } else {
-            toast.success("Запись отменена, занятие возвращено");
-        }
+    onSuccess: () => {
+        toast.success("Запись отменена");
         queryClient.invalidateQueries({ queryKey: ['client_schedule'] });
         queryClient.invalidateQueries({ queryKey: ['portal_home_data'] });
     },

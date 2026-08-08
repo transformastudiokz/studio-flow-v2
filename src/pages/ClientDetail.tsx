@@ -14,6 +14,7 @@ import { ArrowLeft, User, Phone, Mail, Calendar, CreditCard, History, Edit, Tras
 import { useToast } from "@/hooks/use-toast";
 import { format, parseISO } from "date-fns";
 import { ru } from "date-fns/locale";
+import { getSubscriptionState, subscriptionStateLabel } from "@/lib/subscription-state";
 
 export default function ClientDetail() {
   const { id } = useParams();
@@ -50,11 +51,25 @@ export default function ClientDetail() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('user_subscriptions')
-        .select('*, plan:subscription_plans(name)')
+        .select('*, plan:subscription_plans(name,price,duration_days)')
         .eq('user_id', id)
         .order('end_date', { ascending: false });
       if (error) throw error;
       return data;
+    }
+  });
+
+  const { data: subscriptionSales = [] } = useQuery({
+    queryKey: ['client_subscription_sales', id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('cash_transactions')
+        .select('subscription_id,occurred_at,amount')
+        .eq('client_id', id)
+        .eq('operation_type', 'sale')
+        .order('occurred_at', { ascending: true });
+      if (error) throw error;
+      return data || [];
     }
   });
 
@@ -409,7 +424,7 @@ export default function ClientDetail() {
                   <CardTitle>История посещений</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-4">
+                  <div className="divide-y">
                     {transferEvents.length > 0 ? (
                       <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                         <div className="mb-2 flex items-center gap-2 text-sm font-semibold"><CalendarSync className="h-4 w-4" /> История перезаписей</div>
@@ -428,11 +443,11 @@ export default function ClientDetail() {
                     {bookings.map((booking: any) => {
                       const transfer = transferNotes.get(booking.id);
                       return (
-                      <div key={booking.id} className="flex justify-between items-start gap-4 border-b pb-4 last:border-0 last:pb-0">
+                      <div key={booking.id} className="flex items-center justify-between gap-4 py-2.5 first:pt-0 last:pb-0">
                         <div>
-                          <div className="font-medium">{booking.session?.class_type?.name}</div>
-                          <div className="text-sm text-muted-foreground">
-                            {format(parseISO(booking.session?.start_time), 'dd MMMM yyyy HH:mm', { locale: ru })}
+                          <div className="text-sm font-medium">{booking.session?.class_type?.name}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {format(parseISO(booking.session?.start_time), 'dd MMM yyyy · HH:mm', { locale: ru })}
                           </div>
                           {transfer ? (
                             <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
@@ -467,25 +482,33 @@ export default function ClientDetail() {
                   <CardTitle>История абонементов</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-4">
-                    {subscriptions.map((sub: any) => (
-                      <div key={sub.id} className="flex justify-between items-center border-b pb-4 last:border-0 last:pb-0">
+                  <div className="divide-y">
+                    {subscriptions.map((sub: any) => {
+                      const state = getSubscriptionState(sub);
+                      const sale = subscriptionSales.find((item: any) => item.subscription_id === sub.id);
+                      const price = sale?.amount ?? sub.plan?.price;
+                      return (
+                      <div key={sub.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
                         <div>
                           <div className="font-medium">{sub.plan?.name}</div>
-                          <div className="text-sm text-muted-foreground">
-                            Осталось: {sub.visits_remaining} из {sub.visits_total}
+                          <div className="mt-0.5 text-sm text-muted-foreground">
+                            Осталось {sub.visits_remaining} из {sub.visits_total} · {Number(price || 0).toLocaleString('ru-RU')} ₸
+                          </div>
+                          <div className="mt-0.5 text-xs text-muted-foreground">
+                            Куплен {sale?.occurred_at ? format(parseISO(sale.occurred_at), 'dd.MM.yyyy') : format(parseISO(sub.created_at), 'dd.MM.yyyy')}
+                            {' · '}Активирован {sub.activation_date ? format(parseISO(sub.activation_date), 'dd.MM.yyyy') : 'не активирован'}
                           </div>
                         </div>
                         <div className="text-right">
-                          <div className={`text-sm ${sub.is_active ? 'text-green-600' : 'text-gray-500'}`}>
-                            {sub.is_active ? 'Активен' : 'Завершен'}
+                          <div className={`text-sm font-medium ${state === 'active' ? 'text-green-600' : state === 'purchased' ? 'text-blue-600' : 'text-gray-500'}`}>
+                            {subscriptionStateLabel[state]}
                           </div>
                           <div className="text-xs text-muted-foreground">
-                            {sub.end_date ? `до ${format(parseISO(sub.end_date), 'dd.MM.yyyy')}` : 'не активирован'}
+                            {sub.end_date ? `до ${format(parseISO(sub.end_date), 'dd.MM.yyyy')} включительно` : 'срок начнётся при активации'}
                           </div>
                         </div>
                       </div>
-                    ))}
+                    )})}
                   </div>
                 </CardContent>
               </Card>
