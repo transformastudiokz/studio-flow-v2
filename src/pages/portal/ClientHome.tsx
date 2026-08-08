@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Calendar, MessageCircle, ChevronRight, Megaphone } from "lucide-react";
+import { Loader2, Calendar, MessageCircle, ChevronRight, Megaphone, Clock } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { format, parseISO } from "date-fns";
 import { ru } from "date-fns/locale";
@@ -58,12 +58,34 @@ const ClientHome = () => {
         .single();
       const adminPhone = phoneRow?.value || '';
 
+      // 5. Ближайшая будущая запись клиента
+      const { data: upcomingBookings, error: upcomingError } = await supabase
+        .from('bookings')
+        .select(`
+          id,
+          status,
+          session:schedule_sessions!inner(
+            id,
+            start_time,
+            end_time,
+            room,
+            class_type:class_types(name),
+            coach:coaches(name)
+          )
+        `)
+        .eq('user_id', profile.id)
+        .eq('status', 'booked')
+        .gte('session.start_time', new Date().toISOString())
+        .order('start_time', { referencedTable: 'schedule_sessions', ascending: true })
+        .limit(1);
+      if (upcomingError) throw upcomingError;
+
       // Ищем активный абонемент:
       // Либо безлимит (visits_total === null)
       // Либо есть остаток (visits_remaining > 0)
       const activeSub = subs?.find((s: any) => s.visits_total === null || s.visits_remaining > 0);
 
-      return { profile, subscriptions: subs || [], activeSub, news: news || [], adminPhone };
+      return { profile, subscriptions: subs || [], activeSub, news: news || [], adminPhone, upcomingBooking: upcomingBookings?.[0] || null };
     }
   });
 
@@ -78,6 +100,10 @@ const ClientHome = () => {
   const profile = clientData?.profile;
   const activeSub = clientData?.activeSub;
   const newsList = clientData?.news || [];
+  const upcomingBooking = clientData?.upcomingBooking;
+  const upcomingSession = Array.isArray(upcomingBooking?.session) ? upcomingBooking.session[0] : upcomingBooking?.session;
+  const upcomingClassType = Array.isArray(upcomingSession?.class_type) ? upcomingSession.class_type[0] : upcomingSession?.class_type;
+  const upcomingCoach = Array.isArray(upcomingSession?.coach) ? upcomingSession.coach[0] : upcomingSession?.coach;
 
   return (
     <div className="client-page space-y-6 animate-in fade-in">
@@ -125,6 +151,31 @@ const ClientHome = () => {
             <span className="min-w-0 text-left text-sm font-semibold leading-tight">Связаться</span>
         </Button>
       </div>
+
+      {upcomingSession?.start_time && (
+        <section>
+          <h2 className="client-section-title mb-3">Моя ближайшая запись</h2>
+          <button
+            type="button"
+            className="client-surface client-focus flex w-full items-center gap-3 p-4 text-left transition-shadow hover:shadow-md"
+            onClick={() => navigate('/portal/schedule')}
+          >
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#e4eae4]">
+              <Clock className="h-5 w-5 text-[var(--client-sage-deep)]" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-bold text-[var(--client-graphite)]">{upcomingClassType?.name || 'Занятие'}</span>
+              <span className="client-muted mt-1 block text-xs capitalize">
+                {format(parseISO(upcomingSession.start_time), 'eeee, d MMMM · HH:mm', { locale: ru })}
+              </span>
+              <span className="client-muted mt-0.5 block truncate text-xs">
+                {[upcomingCoach?.name, upcomingSession.room].filter(Boolean).join(' · ')}
+              </span>
+            </span>
+            <ChevronRight className="h-5 w-5 shrink-0 text-[var(--client-sage-deep)]" />
+          </button>
+        </section>
+      )}
 
       {/* НОВОСТИ (Вертикальный скролл) */}
       {newsList.length > 0 && (
