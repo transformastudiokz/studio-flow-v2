@@ -1,6 +1,7 @@
 create or replace function public.recalc_visits_remaining()
 returns trigger
 language plpgsql
+security definer
 set search_path = public
 as $$
 declare
@@ -48,6 +49,8 @@ begin
   return new;
 end;
 $$;
+
+revoke all on function public.recalc_visits_remaining() from public;
 
 -- Исправляем накопленные остатки по тому же правилу. Повторный запуск безопасен.
 update public.user_subscriptions us

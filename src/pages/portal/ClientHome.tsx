@@ -11,6 +11,16 @@ import { ClientSubscriptionCard } from "@/components/portal/ClientSubscriptionCa
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
+const formatShortCoachName = (fullName?: string | null) => {
+  const parts = fullName?.trim().split(/\s+/).filter(Boolean) || [];
+  if (parts.length === 0) return '';
+  if (parts.length === 1) return parts[0];
+
+  // В базе ФИО тренеров может храниться как «Фамилия Имя Отчество».
+  return `${parts[1]} ${parts[0][0]}.`;
+};
+
+const shortWeekdays = ['ВС', 'ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ'];
 
 const ClientHome = () => {
   const navigate = useNavigate();
@@ -104,6 +114,7 @@ const ClientHome = () => {
   const upcomingSession = Array.isArray(upcomingBooking?.session) ? upcomingBooking.session[0] : upcomingBooking?.session;
   const upcomingClassType = Array.isArray(upcomingSession?.class_type) ? upcomingSession.class_type[0] : upcomingSession?.class_type;
   const upcomingCoach = Array.isArray(upcomingSession?.coach) ? upcomingSession.coach[0] : upcomingSession?.coach;
+  const upcomingStart = upcomingSession?.start_time ? parseISO(upcomingSession.start_time) : null;
 
   return (
     <div className="client-page space-y-6 animate-in fade-in">
@@ -164,12 +175,12 @@ const ClientHome = () => {
               <Clock className="h-5 w-5 text-[var(--client-sage-deep)]" />
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm font-bold text-[var(--client-graphite)]">{upcomingClassType?.name || 'Занятие'}</span>
-              <span className="client-muted mt-1 block text-xs capitalize">
-                {format(parseISO(upcomingSession.start_time), 'eeee, d MMMM · HH:mm', { locale: ru })}
+              <span className="client-muted block text-xs font-semibold uppercase tracking-wide">
+                {upcomingStart && `${shortWeekdays[upcomingStart.getDay()]} · ${format(upcomingStart, 'd MMMM · HH:mm', { locale: ru })}`}
               </span>
+              <span className="mt-1 block truncate text-sm font-bold text-[var(--client-graphite)]">{upcomingClassType?.name || 'Занятие'}</span>
               <span className="client-muted mt-0.5 block truncate text-xs">
-                {[upcomingCoach?.name, upcomingSession.room].filter(Boolean).join(' · ')}
+                {[formatShortCoachName(upcomingCoach?.name), upcomingSession.room].filter(Boolean).join(' · ')}
               </span>
             </span>
             <ChevronRight className="h-5 w-5 shrink-0 text-[var(--client-sage-deep)]" />
