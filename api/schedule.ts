@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { canClientCancel, formatCancellationCutoff, parseCancellationMinutes } from "../src/lib/cancellation.js";
-import { calculateRemainingVisits, CHARGED_BOOKING_STATUSES } from "../src/lib/subscription-usage.js";
+import { calculateRemainingVisits, DEDUCTED_BOOKING_STATUSES } from "../src/lib/subscription-usage.js";
 import { createClient } from "@supabase/supabase-js";
 import { ensureClientAccount, normalizeClientPhone } from "./_lib/client-account.js";
 
@@ -59,7 +59,7 @@ async function reconcileSubscriptionUsage(subscriptionId: string, fallbackActiva
     .from("bookings")
     .select("id", { count: "exact", head: true })
     .eq("subscription_id", subscriptionId)
-    .in("status", [...CHARGED_BOOKING_STATUSES]);
+    .in("status", [...DEDUCTED_BOOKING_STATUSES]);
   if (countError) throw countError;
 
   const remaining = calculateRemainingVisits(
@@ -96,7 +96,7 @@ async function setBookingAttendanceStatus(bookingId: string, nextStatus: string)
   const session = Array.isArray(booking.session) ? booking.session[0] : booking.session;
   if (!session?.start_time) throw new Error("У занятия не указана дата");
   const visitDate = almatyDate(session.start_time);
-  const chargedStatuses = new Set<string>(CHARGED_BOOKING_STATUSES);
+  const chargedStatuses = new Set<string>(DEDUCTED_BOOKING_STATUSES);
   const wasCharged = chargedStatuses.has(booking.status);
   const willCharge = chargedStatuses.has(nextStatus);
 
