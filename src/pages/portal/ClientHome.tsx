@@ -3,11 +3,11 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, LogOut, Ticket, Calendar, MessageCircle, ChevronRight, Megaphone } from "lucide-react";
+import { Loader2, Calendar, MessageCircle, ChevronRight, Megaphone } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { format, parseISO } from "date-fns";
 import { ru } from "date-fns/locale";
-import { Badge } from "@/components/ui/badge";
+import { ClientSubscriptionCard } from "@/components/portal/ClientSubscriptionCard";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -67,11 +67,6 @@ const ClientHome = () => {
     }
   });
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    navigate("/portal/login");
-  };
-
   const openWhatsApp = () => {
     const phone = clientData?.adminPhone;
     if (!phone) return;
@@ -85,62 +80,33 @@ const ClientHome = () => {
   const newsList = clientData?.news || [];
 
   return (
-    <div className="space-y-6 animate-in fade-in pb-24">
+    <div className="client-page space-y-6 animate-in fade-in">
       {/* HEADER */}
-      <div className="flex justify-between items-center px-4 pt-4">
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Привет, {profile?.first_name}! 👋</h1>
-          <p className="text-gray-500 text-sm">Хорошего дня!</p>
+          <p className="client-muted text-sm font-medium">Личный кабинет</p>
+          <h1 className="client-page-title mt-1">Привет, {profile?.first_name || ""}</h1>
+          <p className="client-muted mt-1 text-sm">Всё для занятий — в одном месте</p>
         </div>
-        <Button variant="ghost" size="icon" onClick={handleLogout}>
-            <LogOut className="w-5 h-5 text-gray-400" />
-        </Button>
       </div>
 
       {/* АБОНЕМЕНТ */}
-      <section className="px-4">
+      <section>
         <div className="flex justify-between items-center mb-3">
-            <h2 className="text-lg font-semibold flex items-center gap-2">
-                <Ticket className="w-5 h-5 text-blue-600" /> Мой абонемент
-            </h2>
-            <Button variant="ghost" size="sm" className="h-8 text-blue-600 px-0 hover:bg-transparent" onClick={() => navigate('/portal/pricing')}>
+            <h2 className="client-section-title">Мой абонемент</h2>
+            <Button variant="ghost" size="sm" className="client-focus h-10 px-1 text-[var(--client-sage-deep)] hover:bg-transparent" onClick={() => navigate('/portal/pricing')}>
                 Все тарифы <ChevronRight className="w-4 h-4 ml-1" />
             </Button>
         </div>
         
         {activeSub ? (
-            <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden">
-                <div className="relative z-10">
-                    <div className="flex justify-between items-start mb-4">
-                        <div>
-                            <p className="text-blue-100 text-sm font-medium">Тариф</p>
-                            <h3 className="text-2xl font-bold">{activeSub.plan?.name}</h3>
-                        </div>
-                        <Badge className="bg-white/20 hover:bg-white/30 text-white border-0">Активен</Badge>
-                    </div>
-                    <div className="flex justify-between mt-6">
-                        <div>
-                            <p className="text-blue-200 text-xs mb-1">Осталось</p>
-                            <p className="text-3xl font-bold">{activeSub.visits_remaining ?? "∞"}</p>
-                        </div>
-                        <div className="text-right">
-                            <p className="text-blue-200 text-xs mb-1">До</p>
-                            <p className="text-lg font-medium">
-                                {activeSub.end_date ? format(parseISO(activeSub.end_date), 'dd.MM.yyyy') : "—"}
-                            </p>
-                            {!activeSub.end_date && (
-                                <p className="text-blue-300 text-xs">не активирован</p>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            </div>
+            <ClientSubscriptionCard subscription={activeSub} />
         ) : (
-            <Card className="border-dashed border-2 bg-gray-50">
+            <Card className="client-surface border-dashed bg-transparent shadow-none">
                 <CardContent className="flex flex-col items-center justify-center py-8 text-center">
                     <p className="font-medium text-gray-900">Нет активного абонемента</p>
                     <p className="text-sm text-gray-500 mt-1 mb-4">Купите абонемент, чтобы записаться.</p>
-                    <Button variant="default" size="sm" onClick={() => navigate('/portal/pricing')}>
+                    <Button className="client-primary" size="sm" onClick={() => navigate('/portal/pricing')}>
                         Купить абонемент
                     </Button>
                 </CardContent>
@@ -149,29 +115,29 @@ const ClientHome = () => {
       </section>
 
       {/* МЕНЮ ДЕЙСТВИЙ */}
-      <div className="grid grid-cols-2 gap-3 px-4">
-        <Button className="h-16 bg-white text-gray-800 border shadow-sm hover:bg-gray-50 flex flex-col items-center justify-center gap-1" onClick={() => navigate('/portal/schedule')}>
-            <Calendar className="w-6 h-6 text-blue-600" /> 
+      <div className="grid grid-cols-2 gap-3">
+        <Button className="client-surface client-focus h-20 text-[var(--client-graphite)] hover:bg-[#f1f4f1] flex flex-col items-center justify-center gap-1" onClick={() => navigate('/portal/schedule')}>
+            <Calendar className="w-6 h-6 text-[var(--client-sage-deep)]" />
             <span>Расписание</span>
         </Button>
-        <Button className="h-16 bg-white text-gray-800 border shadow-sm hover:bg-gray-50 flex flex-col items-center justify-center gap-1" onClick={openWhatsApp}>
-            <MessageCircle className="w-6 h-6 text-green-600" />
+        <Button className="client-surface client-focus h-20 text-[var(--client-graphite)] hover:bg-[#f1f4f1] flex flex-col items-center justify-center gap-1" onClick={openWhatsApp}>
+            <MessageCircle className="w-6 h-6 text-[var(--client-sage-deep)]" />
             <span>Чат с админом</span>
         </Button>
       </div>
 
       {/* НОВОСТИ (Вертикальный скролл) */}
       {newsList.length > 0 && (
-        <section className="px-4 pt-2">
+        <section className="pt-2">
             <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                <Megaphone className="w-5 h-5 text-orange-500" /> Новости
+                <Megaphone className="w-5 h-5 text-[#9a7448]" /> Новости
             </h2>
             {/* Ограничиваем высоту max-h-[300px] и включаем overflow-y-auto */}
-            <div className="flex flex-col gap-3 max-h-[300px] overflow-y-auto pr-1">
+            <div className="flex flex-col gap-3">
                 {newsList.map((item: any) => (
                     <div 
                         key={item.id} 
-                        className="w-full bg-white border border-gray-100 rounded-xl p-4 shadow-sm active:scale-[0.99] transition-transform cursor-pointer"
+                        className="client-surface client-focus w-full cursor-pointer p-4 text-left transition-shadow hover:shadow-md"
                         onClick={() => setSelectedNews(item)}
                     >
                         <div className="flex justify-between items-center mb-2">

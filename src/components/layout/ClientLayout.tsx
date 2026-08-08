@@ -18,16 +18,15 @@ export const ClientLayout = ({ children }: ClientLayoutProps) => {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-24 md:pb-0">
-      {/* Основной контент */}
-      <main className="max-w-md mx-auto min-h-screen bg-white shadow-xl overflow-hidden relative">
-        <div className="h-full overflow-y-auto pb-20">
+    <div className="client-portal min-h-[100dvh]">
+      <main className="mx-auto min-h-[100dvh] w-full max-w-5xl border-x border-transparent md:border-[#e4dfd5]/70">
+        <div className="min-h-[100dvh] overflow-y-auto overscroll-contain pb-[calc(5rem+env(safe-area-inset-bottom))] [-webkit-overflow-scrolling:touch]">
            {children || <Outlet />}
         </div>
       </main>
 
       {/* Нижнее меню (Dock) */}
-      <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-t border-gray-200 px-6 py-2 flex justify-between items-center max-w-md mx-auto shadow-[0_-5px_15px_rgba(0,0,0,0.05)]">
+      <nav aria-label="Основная навигация" className="fixed bottom-0 left-0 right-0 z-50 mx-auto flex max-w-3xl items-center justify-around border-t border-[#e7e2d8] bg-[#fffefb]/95 px-3 pt-1.5 shadow-[0_-8px_24px_rgba(45,45,45,0.06)] backdrop-blur-md pb-[max(.45rem,env(safe-area-inset-bottom))]">
         {navItems.map((item) => {
           const isActive = location.pathname === item.href;
           return (
@@ -35,18 +34,19 @@ export const ClientLayout = ({ children }: ClientLayoutProps) => {
               key={item.name}
               to={item.href}
               className={cn(
-                "flex flex-col items-center gap-1 transition-all duration-300 active:scale-95 w-16 py-2",
-                isActive ? "text-primary" : "text-gray-400 hover:text-gray-600"
+                "client-focus flex min-h-12 min-w-16 flex-col items-center justify-center gap-0.5 rounded-xl py-1 text-[var(--client-muted)] transition-colors",
+                isActive ? "text-[var(--client-sage-deep)]" : "hover:text-[var(--client-graphite)]"
               )}
+              aria-current={isActive ? "page" : undefined}
             >
               <item.icon 
                 className={cn(
-                    "w-6 h-6 transition-all duration-300", 
-                    isActive && "fill-primary/20 scale-110"
+                    "h-[22px] w-[22px] transition-colors",
+                    isActive && "fill-[#e4eae4]"
                 )} 
                 strokeWidth={isActive ? 2.5 : 2} 
               />
-              <span className={cn("text-[10px] font-medium", isActive && "font-bold")}>
+              <span className={cn("text-[11px] font-medium", isActive && "font-bold")}>
                 {item.name}
               </span>
             </Link>

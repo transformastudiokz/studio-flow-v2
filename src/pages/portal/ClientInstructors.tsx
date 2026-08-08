@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { Loader2, X } from "lucide-react";
-import { ClientLayout } from "@/components/layout/ClientLayout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
@@ -28,26 +27,25 @@ const ClientInstructors = () => {
   });
 
   return (
-    <ClientLayout>
-      <div className="space-y-6 pb-20 px-4">
-        <h1 className="text-xl font-bold pt-4">Наши тренеры</h1>
+      <div className="client-page space-y-6">
+        <h1 className="client-page-title">Наши тренеры</h1>
         
         {isLoading ? (
           <div className="flex justify-center p-8"><Loader2 className="w-8 h-8 animate-spin text-primary"/></div>
         ) : instructors.length === 0 ? (
           <div className="text-center text-muted-foreground py-8">Список тренеров пуст</div>
         ) : (
-          <div className="grid gap-3">
+          <div className="grid gap-3 md:grid-cols-2">
             {instructors.map((coach: any) => (
               <Card 
                 key={coach.id} 
-                className="overflow-hidden border-0 shadow-sm ring-1 ring-gray-100 rounded-xl hover:shadow-md transition-all cursor-pointer active:scale-[0.98]"
+                className="client-surface client-focus cursor-pointer overflow-hidden transition-shadow hover:shadow-md"
                 onClick={() => setSelectedCoach(coach)}
               >
                 <CardContent className="p-4 flex items-center gap-4">
                   <Avatar className="w-16 h-16 border-2 border-white shadow-sm shrink-0">
                     <AvatarImage src={coach.photo_url} alt={coach.name} className="object-cover" />
-                    <AvatarFallback className="bg-blue-100 text-blue-600 text-xl font-bold">
+                    <AvatarFallback className="bg-[#e4eae4] text-[var(--client-sage-deep)] text-xl font-bold">
                       {coach.name?.[0]}
                     </AvatarFallback>
                   </Avatar>
@@ -57,7 +55,7 @@ const ClientInstructors = () => {
                     {coach.specializations?.length > 0 ? (
                       <div className="flex flex-wrap gap-1 mt-1">
                         {coach.specializations.map((s: any, i: number) => (
-                          <span key={i} className="text-[10px] font-medium px-1.5 py-0.5 rounded-md text-white" style={{ backgroundColor: s.class_type?.color || '#6b7280' }}>
+                          <span key={i} className="rounded-full bg-[#e4eae4] px-2 py-1 text-[10px] font-semibold text-[var(--client-sage-deep)]">
                             {s.class_type?.name}
                           </span>
                         ))}
@@ -108,7 +106,7 @@ const ClientInstructors = () => {
                         {selectedCoach?.specializations?.length > 0 && (
                       <div className="flex flex-wrap gap-1 mt-2">
                         {selectedCoach.specializations.map((s: any, i: number) => (
-                          <span key={i} className="text-xs font-medium px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: s.class_type?.color || '#6b7280' }}>
+                            <span key={i} className="rounded-full bg-[#e4eae4] px-2 py-1 text-xs font-semibold text-[var(--client-sage-deep)]">
                             {s.class_type?.name}
                           </span>
                         ))}
@@ -137,7 +135,6 @@ const ClientInstructors = () => {
             </DialogContent>
         </Dialog>
       </div>
-    </ClientLayout>
   );
 };
 

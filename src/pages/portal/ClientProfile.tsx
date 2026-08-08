@@ -1,4 +1,3 @@
-import { ClientLayout } from "@/components/layout/ClientLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -8,6 +7,7 @@ import { Loader2, LogOut, Phone } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useNavigate } from "react-router-dom";
+import { ClientSubscriptionCard } from "@/components/portal/ClientSubscriptionCard";
 
 const ClientProfile = () => {
   const navigate = useNavigate();
@@ -78,22 +78,19 @@ const ClientProfile = () => {
 
   if (profileError || !client) {
       return (
-          <ClientLayout>
-              <div className="p-6 text-center pt-20">
+              <div className="client-page text-center pt-20">
                   <h2 className="text-xl font-bold text-red-600 mb-2">Профиль не найден</h2>
                   <Button onClick={handleLogout}>Выйти</Button>
               </div>
-          </ClientLayout>
       )
   }
 
   return (
-    <ClientLayout>
-      <div className="space-y-6 pb-20 px-4">
+      <div className="client-page space-y-6">
         <div className="flex items-center justify-between pt-4">
            <div className="flex items-center gap-4">
-              <Avatar className="w-16 h-16 border-2 border-white shadow-sm">
-                <AvatarFallback className="bg-blue-100 text-blue-600 text-xl font-bold">
+              <Avatar className="w-14 h-14 border-2 border-white shadow-sm">
+                <AvatarFallback className="bg-[#e4eae4] text-[var(--client-sage-deep)] text-xl font-bold">
                   {client?.first_name?.[0]}
                 </AvatarFallback>
               </Avatar>
@@ -117,28 +114,7 @@ const ClientProfile = () => {
                 </div>
               ) : (
                 subs.map((sub: any) => (
-                   <Card key={sub.id} className="bg-blue-600 text-white border-none shadow-md overflow-hidden relative rounded-xl">
-                      <div className="absolute right-[-20px] top-[-20px] w-24 h-24 bg-white/10 rounded-full blur-2xl pointer-events-none" />
-                      <CardContent className="p-5">
-                          <div className="flex justify-between items-start mb-4">
-                            <div>
-                               <p className="text-xs opacity-80 uppercase font-medium">Тариф</p>
-                               <h4 className="font-bold text-lg">{sub.plan?.name}</h4>
-                            </div>
-                            <div className="text-right">
-                               <p className="text-3xl font-bold">{sub.visits_remaining ?? "∞"}</p>
-                               <p className="text-xs opacity-80">занятий</p>
-                            </div>
-                          </div>
-                          <div className="text-xs opacity-70">
-                            {sub.end_date
-                              ? `Действует до ${format(parseISO(sub.end_date), 'dd.MM.yyyy')}`
-                              : sub.plan?.duration_days
-                                ? `Активируется при первом посещении · ${sub.plan.duration_days} дней`
-                                : "Без ограничения по сроку"}
-                          </div>
-                      </CardContent>
-                   </Card>
+                   <ClientSubscriptionCard key={sub.id} subscription={sub} compact />
                 ))
               )}
            </div>
@@ -152,7 +128,7 @@ const ClientProfile = () => {
            
            <TabsContent value="history" className="mt-4 space-y-2">
               {history.length > 0 ? history.map((item: any) => (
-                  <div key={item.id} className="flex justify-between items-center p-3 border-b last:border-0 hover:bg-gray-50 transition-colors rounded-md bg-white shadow-sm">
+                  <div key={item.id} className="client-surface flex min-h-16 items-center justify-between gap-3 px-4 py-3 shadow-none">
                       <div>
                           <div className="font-medium">{item.session?.class_type?.name}</div>
                           <div className="text-xs text-gray-500">
@@ -160,8 +136,8 @@ const ClientProfile = () => {
                           </div>
                       </div>
                       <div className={`text-xs px-2 py-1 rounded font-bold ${
-                          item.status === 'completed' ? 'bg-green-100 text-green-700' : 
-                          item.status === 'cancelled' ? 'bg-red-100 text-red-700' : 'bg-blue-50 text-blue-700'
+                          item.status === 'completed' ? 'bg-[#eaf5ed] text-[#3f7a59]' :
+                          item.status === 'cancelled' ? 'bg-[#f9e9e7] text-[#b84b49]' : 'bg-[#eaf1f4] text-[#58758b]'
                       }`}>
                           {item.status === 'completed' ? 'Посетил' : item.status === 'cancelled' ? 'Отмена' : 'Записан'}
                       </div>
@@ -170,11 +146,10 @@ const ClientProfile = () => {
            </TabsContent>
 
            <TabsContent value="info" className="mt-4">
-              <Card><CardContent className="p-4"><div className="text-sm">Ваш телефон для связи: {client?.phone}</div></CardContent></Card>
+              <Card className="client-surface"><CardContent className="p-4"><div className="text-sm">Ваш телефон для связи: {client?.phone}</div></CardContent></Card>
            </TabsContent>
         </Tabs>
       </div>
-    </ClientLayout>
   );
 };
 

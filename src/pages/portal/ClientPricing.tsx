@@ -2,7 +2,6 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { Check, Loader2, ChevronLeft, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ClientLayout } from "@/components/layout/ClientLayout";
 import { useNavigate } from "react-router-dom";
 
 const ClientPricing = () => {
@@ -32,29 +31,28 @@ const ClientPricing = () => {
   };
 
   return (
-    <ClientLayout>
-      <div className="pb-24">
+      <div className="client-page">
         {/* Header с кнопкой назад */}
         <div className="flex items-center gap-2 pt-4 mb-4">
           <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0" onClick={() => navigate(-1)}>
             <ChevronLeft className="w-5 h-5" />
           </Button>
-          <h1 className="text-xl font-bold">Тарифы</h1>
+          <h1 className="client-page-title">Тарифы</h1>
         </div>
 
         {isLoading ? (
           <div className="flex justify-center p-8"><Loader2 className="animate-spin text-primary" /></div>
         ) : (
-          <div className="space-y-3">
+          <div className="grid gap-4 md:grid-cols-2">
             {plans?.map((plan: any) => (
-              <div key={plan.id} className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
+              <div key={plan.id} className="client-surface overflow-hidden">
                 {/* Верхняя часть */}
                 <div className="flex items-start justify-between p-4 pb-3">
                   <div>
                     <h3 className="text-base font-bold leading-tight">{plan.name}</h3>
                     <div className="flex items-baseline gap-1 mt-1">
-                      <span className="text-2xl font-extrabold text-primary">{plan.price.toLocaleString()}</span>
-                      <span className="text-sm font-medium text-primary">₸</span>
+                      <span className="text-2xl font-extrabold text-[var(--client-sage-deep)]">{plan.price.toLocaleString()}</span>
+                      <span className="text-sm font-medium text-[var(--client-sage-deep)]">₸</span>
                     </div>
                   </div>
                   <div className="text-right shrink-0 ml-3">
@@ -85,7 +83,7 @@ const ClientPricing = () => {
                 {/* Кнопка */}
                 <div className="px-4 pb-4">
                   <Button
-                    className="w-full rounded-xl h-11 gap-2"
+                    className="client-primary w-full rounded-xl h-11 gap-2"
                     onClick={() => buyViaWhatsApp(plan.name)}
                     disabled={!adminPhone}
                   >
@@ -98,7 +96,6 @@ const ClientPricing = () => {
           </div>
         )}
       </div>
-    </ClientLayout>
   );
 };
 

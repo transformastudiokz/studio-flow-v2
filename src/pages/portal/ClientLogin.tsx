@@ -92,17 +92,18 @@ const ClientLogin = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-      <Card className="w-full max-w-md border-none shadow-xl">
+    <div className="client-portal flex min-h-[100dvh] items-start justify-center overflow-y-auto px-4 pb-8 pt-[max(2rem,env(safe-area-inset-top))] sm:items-center">
+      <Card className="client-surface min-w-0 w-full max-w-md overflow-hidden">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold text-primary">Balance Yoga</CardTitle>
-          <CardDescription>Вход для клиентов</CardDescription>
+          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#566b5c] text-xl font-bold text-[#fffdf7]">B</div>
+          <CardTitle className="text-2xl font-bold text-[#2d2d2d]">Balance</CardTitle>
+          <CardDescription>Личный кабинет студии</CardDescription>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="login" className="w-full">
+          <Tabs defaultValue="login" className="min-w-0 w-full">
             <TabsList className="grid w-full grid-cols-2 mb-6">
               <TabsTrigger value="login">Вход</TabsTrigger>
-              <TabsTrigger value="register">Регистрация</TabsTrigger>
+              <TabsTrigger value="register" className="text-xs sm:text-sm">Регистрация</TabsTrigger>
             </TabsList>
             
             {/* ВХОД */}
@@ -111,24 +112,24 @@ const ClientLogin = () => {
                 <Label>Телефон</Label>
                 <div className="relative">
                     <Phone className="absolute left-3 top-3 h-4 w-4 text-slate-400"/>
-                    <Input className="pl-9" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="777..." />
+                    <Input inputMode="tel" autoComplete="tel" className="h-12 pl-9" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="777..." />
                 </div>
               </div>
               <div className="space-y-2">
                 <Label>Пароль</Label>
                 <div className="relative">
                     <Lock className="absolute left-3 top-3 h-4 w-4 text-slate-400"/>
-                    <Input type="password" className="pl-9" value={password} onChange={e=>setPassword(e.target.value)} placeholder="******" />
+                    <Input type="password" autoComplete="current-password" className="h-12 pl-9" value={password} onChange={e=>setPassword(e.target.value)} placeholder="******" />
                 </div>
               </div>
-              <Button className="w-full" onClick={()=>handleAuth('login')} disabled={isLoading}>
+              <Button className="client-primary h-12 w-full" onClick={()=>handleAuth('login')} disabled={isLoading}>
                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>} Войти
               </Button>
             </TabsContent>
 
             {/* РЕГИСТРАЦИЯ */}
             <TabsContent value="register" className="space-y-4">
-               <div className="grid grid-cols-2 gap-4">
+               <div className="grid gap-4 sm:grid-cols-2">
                  <div className="space-y-2">
                     <Label>Имя</Label>
                     <Input placeholder="Иван" value={firstName} onChange={e=>setFirstName(e.target.value)} />
@@ -141,15 +142,15 @@ const ClientLogin = () => {
                
                <div className="space-y-2">
                  <Label>Телефон</Label>
-                 <Input placeholder="777..." value={phone} onChange={e=>setPhone(e.target.value)} />
+                 <Input inputMode="tel" autoComplete="tel" className="h-12" placeholder="777..." value={phone} onChange={e=>setPhone(e.target.value)} />
                </div>
                
                <div className="space-y-2">
                  <Label>Придумайте пароль</Label>
-                 <Input type="password" placeholder="******" value={password} onChange={e=>setPassword(e.target.value)} />
+                 <Input type="password" autoComplete="new-password" className="h-12" placeholder="******" value={password} onChange={e=>setPassword(e.target.value)} />
                </div>
 
-               <Button className="w-full" onClick={()=>handleAuth('register')} disabled={isLoading}>
+               <Button className="client-primary h-12 w-full" onClick={()=>handleAuth('register')} disabled={isLoading}>
                  {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>} Зарегистрироваться
                </Button>
             </TabsContent>
