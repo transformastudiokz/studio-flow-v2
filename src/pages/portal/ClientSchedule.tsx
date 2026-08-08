@@ -110,42 +110,15 @@ const ClientSchedule = () => {
   // 2. Запись на занятие
   const bookMutation = useMutation({
     mutationFn: async (sessionId: string) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Нет авторизации");
-
-      const { data: sessionData, error: sErr } = await supabase
-        .from('schedule_sessions')
-        .select('capacity, booking_status, booking_closed_reason, bookings(id,status)')
-        .eq('id', sessionId)
-        .single();
-      
-      if(sErr) throw sErr;
-      if (sessionData.booking_status !== 'open') throw new Error(sessionData.booking_status === 'cancelled' ? "Занятие отменено" : "Запись на занятие закрыта");
-      const currentCount = (sessionData.bookings || []).filter((booking: any) => occupiesPlace(booking.status)).length;
-      if (currentCount >= sessionData.capacity) throw new Error("К сожалению, места только что закончились");
-
-      const todayStr = new Date().toISOString().split('T')[0];
-      const { data: subs } = await supabase
-        .from('user_subscriptions')
-        .select('id, visits_remaining')
-        .eq('user_id', user.id)
-        .eq('is_active', true)
-        .gte('visits_remaining', 1)
-        .or('end_date.is.null,end_date.gte.' + todayStr)
-        .order('end_date', { ascending: true, nullsFirst: false })
-        .limit(1);
-
-      if (!subs || subs.length === 0) throw new Error("Нет активного абонемента или закончились занятия");
-      const activeSub = subs[0];
-
-      const { error: bookError } = await supabase.from('bookings').insert({
-          session_id: sessionId,
-          user_id: user.id,
-          subscription_id: activeSub.id,
-          status: 'booked'
+      const { data: { session } } = await supabase.auth.getSession();
+      const response = await fetch('/api/schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+        body: JSON.stringify({ action: 'book-own-session', sessionId }),
       });
-      if (bookError) throw bookError;
-      // visits_remaining пересчитывается триггером on_booking_change_recalc на бэкенде
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Не удалось записаться');
+      return result;
     },
     onSuccess: () => {
       setPendingSessionId(null);

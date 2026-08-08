@@ -184,10 +184,72 @@ async function cancelOwnBooking(userId: string, bookingId: string) {
   return { bookingId, status: "cancelled" };
 }
 
+async function bookOwnSession(userId: string, sessionId: string) {
+  if (!adminClient) throw new Error("Серверный доступ Supabase не настроен");
+  const { data: session, error: sessionError } = await adminClient
+    .from("schedule_sessions")
+    .select("id,start_time,capacity,booking_status,is_cancelled,bookings:bookings(id,user_id,status),onefit_bookings:onefit_bookings(id,is_active)")
+    .eq("id", sessionId)
+    .maybeSingle();
+  if (sessionError) throw sessionError;
+  if (!session) throw new Error("Занятие больше недоступно. Обнови расписание.");
+  if (session.booking_status !== "open" || session.is_cancelled) {
+    throw new Error("Запись на это занятие закрыта");
+  }
+  if (new Date(session.start_time).getTime() <= Date.now()) {
+    throw new Error("Нельзя записаться на прошедшее занятие");
+  }
+
+  const activeStatuses = (session.bookings || []).filter((booking: { status: string }) =>
+    !["cancelled", "late_cancel", "absent"].includes(booking.status));
+  if (activeStatuses.some((booking: { user_id: string }) => booking.user_id === userId)) {
+    throw new Error("Ты уже записан на это занятие");
+  }
+  const occupied = activeStatuses.length
+    + (session.onefit_bookings || []).filter((booking: { is_active: boolean }) => booking.is_active).length;
+  if (occupied >= Number(session.capacity)) throw new Error("К сожалению, места уже закончились");
+
+  const sessionDate = almatyDate(session.start_time);
+  const { data: subscriptions, error: subscriptionsError } = await adminClient
+    .from("user_subscriptions")
+    .select("id,created_at")
+    .eq("user_id", userId)
+    .eq("is_active", true)
+    .gt("visits_remaining", 0)
+    .or(`start_date.is.null,start_date.lte.${sessionDate}`)
+    .or(`end_date.is.null,end_date.gte.${sessionDate}`)
+    .order("created_at", { ascending: true })
+    .limit(1);
+  if (subscriptionsError) throw subscriptionsError;
+  const subscription = subscriptions?.[0];
+  if (!subscription) throw new Error("Нет действующего абонемента или закончились занятия");
+
+  const reusable = (session.bookings || []).find((booking: { user_id: string; status: string }) =>
+    booking.user_id === userId && booking.status === "cancelled");
+  const query = reusable
+    ? adminClient.from("bookings").update({ status: "booked", subscription_id: subscription.id }).eq("id", reusable.id)
+    : adminClient.from("bookings").insert({
+      session_id: sessionId,
+      user_id: userId,
+      subscription_id: subscription.id,
+      status: "booked",
+    });
+  const { data: booking, error: bookingError } = await query.select("id,status").single();
+  if (bookingError || !booking) throw bookingError || new Error("Не удалось создать запись");
+  return { bookingId: booking.id, status: booking.status, subscriptionId: subscription.id };
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
     const action = req.body?.action;
+    if (action === "book-own-session") {
+      const user = await requireUser(req);
+      if (!user) return res.status(401).json({ error: "Нужна авторизация клиента" });
+      const sessionId = String(req.body?.sessionId || "");
+      if (!sessionId) return res.status(400).json({ error: "Занятие не указано" });
+      return res.status(201).json(await bookOwnSession(user.id, sessionId));
+    }
     if (action === "cancel-own-booking") {
       const user = await requireUser(req);
       if (!user) return res.status(401).json({ error: "Нужна авторизация клиента" });
