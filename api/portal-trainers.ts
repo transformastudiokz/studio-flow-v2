@@ -34,6 +34,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({ trainers: result });
   } catch (error) {
     console.error("Portal trainers API error", error);
-    return res.status(500).json({ error: error instanceof Error ? error.message : "Не удалось загрузить тренеров" });
+    const message = error instanceof Error
+      ? error.message
+      : typeof error === "object" && error && "message" in error
+        ? String(error.message)
+        : "Не удалось загрузить тренеров";
+    return res.status(500).json({ error: message });
   }
 }
