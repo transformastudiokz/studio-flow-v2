@@ -38,6 +38,7 @@ export type ScheduleSession = {
   room: string | null;
   booking_status: SessionBookingStatus;
   booking_closed_reason: string | null;
+  is_client_visible?: boolean | null;
   is_cancelled?: boolean | null;
   class_type: { id: string; name: string; color: string | null; duration_min?: number | null } | null;
   coach: { id: string; name: string } | null;
@@ -141,6 +142,7 @@ export const shiftSessionToWeek = (session: ScheduleSession, targetWeekDate: Dat
     booking_status: "open" as const,
     is_cancelled: false,
     booking_closed_reason: null,
+    is_client_visible: session.is_client_visible !== false,
   };
 };
 

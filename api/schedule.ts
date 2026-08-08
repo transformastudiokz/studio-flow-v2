@@ -188,11 +188,12 @@ async function bookOwnSession(userId: string, sessionId: string) {
   if (!adminClient) throw new Error("Серверный доступ Supabase не настроен");
   const { data: session, error: sessionError } = await adminClient
     .from("schedule_sessions")
-    .select("id,start_time,capacity,booking_status,is_cancelled,bookings:bookings(id,user_id,status),onefit_bookings:onefit_bookings(id,is_active)")
+    .select("id,start_time,capacity,booking_status,is_cancelled,is_client_visible,bookings:bookings(id,user_id,status),onefit_bookings:onefit_bookings(id,is_active)")
     .eq("id", sessionId)
     .maybeSingle();
   if (sessionError) throw sessionError;
   if (!session) throw new Error("Занятие больше недоступно. Обнови расписание.");
+  if (session.is_client_visible === false) throw new Error("Это занятие недоступно в клиентском расписании");
   if (session.booking_status !== "open" || session.is_cancelled) {
     throw new Error("Запись на это занятие закрыта");
   }

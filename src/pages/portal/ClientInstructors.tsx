@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/lib/supabase";
 import { Loader2, X } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -15,14 +14,10 @@ const ClientInstructors = () => {
   const { data: instructors = [], isLoading } = useQuery({
     queryKey: ['portal_instructors'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('coaches')
-        .select('*, specializations:coach_class_types(class_type:class_types(name, color))')
-        .eq('is_active', true)
-        .order('name');
-
-      if (error) throw error;
-      return data;
+      const response = await fetch('/api/portal-trainers');
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Не удалось загрузить тренеров');
+      return result.trainers || [];
     }
   });
 
@@ -42,23 +37,24 @@ const ClientInstructors = () => {
                 className="client-surface client-focus cursor-pointer overflow-hidden transition-shadow hover:shadow-md"
                 onClick={() => setSelectedCoach(coach)}
               >
-                <CardContent className="p-4 flex items-center gap-4">
-                  <Avatar className="w-16 h-16 border-2 border-white shadow-sm shrink-0">
-                    <AvatarImage src={coach.photo_url} alt={coach.name} className="object-cover" />
+                <CardContent className="flex items-center gap-3 p-3.5">
+                  <Avatar className="h-14 w-14 shrink-0 border-2 border-white shadow-sm">
+                    <AvatarImage src={coach.photo_url} alt={coach.display_name} className="object-cover" />
                     <AvatarFallback className="bg-[#e4eae4] text-[var(--client-sage-deep)] text-xl font-bold">
-                      {coach.name?.[0]}
+                      {coach.display_name?.[0]}
                     </AvatarFallback>
                   </Avatar>
                   
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-bold text-lg truncate">{coach.name}</h3>
+                    <h3 className="truncate text-base font-bold">{coach.display_name}</h3>
                     {coach.specializations?.length > 0 ? (
                       <div className="flex flex-wrap gap-1 mt-1">
-                        {coach.specializations.map((s: any, i: number) => (
+                        {coach.specializations.slice(0, 2).map((s: any, i: number) => (
                           <span key={i} className="rounded-full bg-[#e4eae4] px-2 py-1 text-[10px] font-semibold text-[var(--client-sage-deep)]">
                             {s.class_type?.name}
                           </span>
                         ))}
+                        {coach.specializations.length > 2 ? <span className="rounded-full bg-[#ece8df] px-2 py-1 text-[10px] font-semibold text-[#6f706b]">ещё {coach.specializations.length - 2}</span> : null}
                       </div>
                     ) : (
                       <p className="text-sm text-gray-500 line-clamp-2 mt-1 leading-snug">
@@ -81,19 +77,20 @@ const ClientInstructors = () => {
                     {selectedCoach?.photo_url ? (
                         <img 
                             src={selectedCoach.photo_url} 
-                            alt={selectedCoach.name} 
+                            alt={selectedCoach.display_name}
                             className="w-full h-full object-cover"
                         />
                     ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-blue-50 text-blue-300">
-                            <span className="text-6xl font-bold">{selectedCoach?.name?.[0]}</span>
+                        <div className="flex h-full w-full items-center justify-center bg-[#e4eae4] text-[var(--client-sage-deep)]">
+                            <span className="text-6xl font-bold">{selectedCoach?.display_name?.[0]}</span>
                         </div>
                     )}
                     
                     {/* Кнопка закрытия */}
                     <button 
                         onClick={() => setSelectedCoach(null)}
-                        className="absolute top-3 right-3 p-1.5 bg-black/20 hover:bg-black/40 text-white rounded-full backdrop-blur-sm transition-colors"
+                        aria-label="Закрыть"
+                        className="absolute right-3 top-3 flex h-11 w-11 items-center justify-center rounded-full bg-black/20 text-white backdrop-blur-sm transition-colors hover:bg-black/40"
                     >
                         <X className="w-5 h-5" />
                     </button>
@@ -101,7 +98,7 @@ const ClientInstructors = () => {
 
                 <div className="p-6">
                     <DialogHeader className="mb-4 text-left">
-                        <DialogTitle className="text-2xl font-bold">{selectedCoach?.name}</DialogTitle>
+                        <DialogTitle className="text-2xl font-bold">{selectedCoach?.display_name}</DialogTitle>
                         {/* Если есть отдельное поле специализации, можно добавить его сюда */}
                         {selectedCoach?.specializations?.length > 0 && (
                       <div className="flex flex-wrap gap-1 mt-2">

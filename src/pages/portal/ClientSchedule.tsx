@@ -18,6 +18,7 @@ import { Loader2, User, Check, Clock, ChevronLeft, ChevronRight, XCircle } from 
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { occupiesPlace } from "@/lib/schedule";
+import { formatCoachShortName } from "@/lib/schedule";
 import {
   Dialog,
   DialogContent,
@@ -76,7 +77,7 @@ const ClientSchedule = () => {
       const { data, error } = await supabase
         .from('schedule_sessions')
         .select(`
-            id, start_time, end_time, capacity, booking_status, booking_closed_reason,
+            id, start_time, end_time, capacity, booking_status, booking_closed_reason, is_client_visible,
             class_type:class_types(name, color, description),
             coach:coaches(name),
             my_booking:bookings(id, user_id, subscription_id, status),
@@ -84,6 +85,7 @@ const ClientSchedule = () => {
         `)
         .gte('start_time', start)
         .lte('start_time', end)
+        .eq('is_client_visible', true)
         .order('start_time');
 
       if (error) throw error;
@@ -237,13 +239,13 @@ const ClientSchedule = () => {
               return (
                 <Card 
                     key={session.id} 
-                    className={cn("client-surface client-focus overflow-hidden cursor-pointer transition-shadow hover:shadow-md", session.booking_status === 'cancelled' ? "bg-[#ece8df] text-slate-600" : session.booking_status === 'closed' ? "bg-[#f5f3ef]" : "")}
+                    className={cn("client-surface client-focus overflow-hidden transition-shadow hover:shadow-md", session.booking_status === 'cancelled' ? "bg-[#ece8df] text-slate-600" : session.booking_status === 'closed' ? "bg-[#f5f3ef]" : "")}
                     onClick={() => setSelectedClassInfo(session.class_type)} // ОТКРЫВАЕМ ИНФО
                 >
                   <div className="flex h-full">
                       <div className="w-1.5 shrink-0" style={{ backgroundColor: session.class_type?.color || '#3b82f6' }} />
                       
-                      <div className="p-3 flex-1 flex flex-col items-stretch justify-between gap-3 min-[360px]:flex-row min-[360px]:items-center">
+                      <div className="min-w-0 flex-1 p-3 min-[400px]:grid min-[400px]:grid-cols-[minmax(0,1fr)_8.5rem] min-[400px]:items-center min-[400px]:gap-3">
                         <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
                                 <div className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-gray-100 text-primary font-bold text-xs whitespace-nowrap tabular-nums">
@@ -258,22 +260,22 @@ const ClientSchedule = () => {
                                             "text-[10px] font-semibold px-1.5 py-0.5 rounded-md",
                                             session.seats_left <= 3 ? "text-orange-600 bg-orange-50" : "text-green-600 bg-green-50"
                                         )}>
-                                            {session.seats_left} мест
+                                            {session.seats_left} свободно
                                         </span>
                                     ) : (
-                                        <span className="text-[10px] font-medium text-red-500 bg-red-50 px-1.5 py-0.5 rounded-md">Full</span>
+                                        <span className="text-[10px] font-medium text-red-600 bg-red-50 px-1.5 py-0.5 rounded-md">Мест нет</span>
                                     )}
                                 </div>
                             </div>
 
-                            <h3 className="font-bold text-sm leading-tight truncate">{session.class_type?.name}</h3>
+                            <button type="button" className="client-focus block max-w-full text-left" onClick={() => setSelectedClassInfo(session.class_type)}><h3 className="line-clamp-2 text-sm font-bold leading-tight">{session.class_type?.name}</h3></button>
                             {session.booking_status !== 'open' && <p className="mt-1 text-[10px] font-semibold text-slate-600">{session.booking_status === 'cancelled' ? "Занятие отменено" : "Запись закрыта"}{session.booking_closed_reason ? ` · ${session.booking_closed_reason}` : ""}</p>}
                             <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5 truncate">
-                                <User className="w-3 h-3" /> {session.coach?.name || "Тренер"}
+                                <User className="w-3 h-3" /> {formatCoachShortName(session.coach?.name)}
                             </p>
                         </div>
 
-                        <div className="shrink-0" onClick={(e) => e.stopPropagation()}> 
+                        <div className="mt-2 min-[400px]:mt-0" onClick={(e) => e.stopPropagation()}>
                            {/* e.stopPropagation() ВАЖНО: Чтобы клик по кнопке не открывал инфо */}
                            {session.is_booked_by_me ? (
                                 session.my_booking_status === 'late_cancel' ? (
@@ -284,7 +286,7 @@ const ClientSchedule = () => {
                                 <Button
                                     variant="outline"
                                     className={cn(
-                                      "client-focus h-11 text-xs px-4",
+                                      "client-focus h-10 w-full rounded-xl px-4 text-xs",
                                       cancellationAllowed
                                         ? "border-[#b7c3b8] bg-[#eaf5ed] text-[#3f7a59]"
                                         : "border-[#e4dfd5] bg-[#ece8df] text-[#6f706b]",
@@ -306,16 +308,16 @@ const ClientSchedule = () => {
                                 </Button>
                                 )
                             ) : session.booking_status !== 'open' ? (
-                                <Button disabled variant="secondary" className="h-8 text-xs bg-slate-200 text-slate-600 px-3">{session.booking_status === 'cancelled' ? "Отменено" : "Запись закрыта"}</Button>
+                                <Button disabled variant="secondary" className="h-10 w-full rounded-xl bg-[#ece8df] px-3 text-xs text-[#6f706b]">{session.booking_status === 'cancelled' ? "Занятие отменено" : "Запись закрыта"}</Button>
                             ) : isFull ? (
-                                <Button disabled variant="secondary" className="h-8 text-xs bg-gray-100 text-gray-400 px-3">
+                                <Button disabled variant="secondary" className="h-10 w-full rounded-xl bg-[#ece8df] px-3 text-xs text-[#6f706b]">
                                 Заполнено
                                 </Button>
                             ) : (
                                 <Button
                                 onClick={() => handleBook(session.id)}
                                 disabled={pendingSessionId === session.id}
-                                className="client-primary client-focus h-11 text-xs shadow-sm rounded-xl px-4"
+                                className="client-primary client-focus h-10 w-full rounded-xl px-4 text-xs shadow-none"
                                 >
                                 {pendingSessionId === session.id ? <Loader2 className="w-3 h-3 animate-spin" /> : "Записаться"}
                                 </Button>

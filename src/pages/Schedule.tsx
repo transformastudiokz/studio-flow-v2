@@ -67,7 +67,7 @@ export default function Schedule() {
         .from("schedule_sessions")
         .select(`
           id, class_type_id, coach_id, start_time, end_time, capacity, room,
-          booking_status, booking_closed_reason, is_cancelled,
+          booking_status, booking_closed_reason, is_cancelled, is_client_visible,
           class_type:class_types(id,name,color,duration_min),
           coach:coaches(id,name),
           bookings:bookings(id,status,user_id,created_at,user:profiles(id,first_name,last_name,phone,email)),

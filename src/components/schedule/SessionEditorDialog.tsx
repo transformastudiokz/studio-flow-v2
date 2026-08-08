@@ -41,6 +41,7 @@ const emptyForm = (date: Date) => ({
   room: "Большой зал",
   capacity: "12",
   bookingStatus: "open" as SessionBookingStatus,
+  clientVisible: true,
   reason: "",
 });
 
@@ -63,6 +64,7 @@ export function SessionEditorDialog({ open, onOpenChange, session, initialDate, 
       room: normalizeRoom(session.room),
       capacity: String(session.capacity || 12),
       bookingStatus: session.booking_status || "open",
+      clientVisible: session.is_client_visible !== false,
       reason: session.booking_closed_reason || "",
     });
   }, [initialDate, open, session]);
@@ -87,7 +89,9 @@ export function SessionEditorDialog({ open, onOpenChange, session, initialDate, 
           form.endTime !== format(parseISO(session.end_time), "HH:mm") ||
           capacity !== session.capacity ||
           form.bookingStatus !== session.booking_status;
-        if (occupied > 0 && scheduleChanged) {
+          // Видимость для клиентов — самостоятельная настройка и тоже считается изменением расписания.
+        const visibilityChanged = form.clientVisible !== (session.is_client_visible !== false);
+        if (occupied > 0 && (scheduleChanged || visibilityChanged)) {
           const destructive = form.bookingStatus === "cancelled";
           const question = destructive
             ? `Отменить занятие, на которое записано ${occupied} чел.? Записи останутся в истории, а новая запись будет закрыта.`
@@ -127,6 +131,7 @@ export function SessionEditorDialog({ open, onOpenChange, session, initialDate, 
         booking_closed_reason: form.bookingStatus === "open" ? null : form.reason.trim(),
         booking_closed_at: form.bookingStatus === "open" ? null : new Date().toISOString(),
         booking_closed_by: form.bookingStatus === "open" ? null : user?.id || null,
+        is_client_visible: form.clientVisible,
       };
 
       const result = session
@@ -177,6 +182,10 @@ export function SessionEditorDialog({ open, onOpenChange, session, initialDate, 
             <Label>Состояние занятия</Label>
             <Select value={form.bookingStatus} onValueChange={(bookingStatus: SessionBookingStatus) => setForm((current) => ({ ...current, bookingStatus }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="open">Запись открыта</SelectItem><SelectItem value="closed">Закрыть новые записи</SelectItem><SelectItem value="cancelled">Занятие отменено</SelectItem></SelectContent></Select>
             {form.bookingStatus !== "open" ? <><Label>Причина *</Label><Textarea value={form.reason} onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))} placeholder="Например: замена тренера не найдена" /></> : null}
+            <label className="mt-1 flex cursor-pointer items-start gap-3 rounded-lg border bg-background p-3">
+              <input type="checkbox" className="mt-1 h-4 w-4 accent-primary" checked={!form.clientVisible} onChange={(event) => setForm((current) => ({ ...current, clientVisible: !event.target.checked }))} />
+              <span><span className="block text-sm font-medium">Не отображать клиентам</span><span className="mt-0.5 block text-xs text-muted-foreground">Занятие останется в админском расписании, но полностью исчезнет из клиентского кабинета.</span></span>
+            </label>
           </div>
           {form.bookingStatus === "cancelled" ? <Alert variant="destructive"><AlertTriangle className="h-4 w-4" /><AlertDescription>Занятие останется в расписании, но новые записи будут запрещены. Клиентские записи не удаляются.</AlertDescription></Alert> : null}
         </div>

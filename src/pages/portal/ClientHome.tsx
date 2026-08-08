@@ -73,7 +73,7 @@ const ClientHome = () => {
     window.open(`https://wa.me/${phone.replace(/\D/g, '')}`, '_blank');
   };
 
-  if (isLoading) return <div className="flex justify-center mt-20"><Loader2 className="animate-spin text-blue-600" /></div>;
+  if (isLoading) return <div className="mt-20 flex justify-center"><Loader2 className="animate-spin text-[var(--client-sage-deep)]" /></div>;
 
   const profile = clientData?.profile;
   const activeSub = clientData?.activeSub;
@@ -115,14 +115,14 @@ const ClientHome = () => {
       </section>
 
       {/* МЕНЮ ДЕЙСТВИЙ */}
-      <div className="grid grid-cols-2 gap-3">
-        <Button className="client-surface client-focus h-20 text-[var(--client-graphite)] hover:bg-[#f1f4f1] flex flex-col items-center justify-center gap-1" onClick={() => navigate('/portal/schedule')}>
-            <Calendar className="w-6 h-6 text-[var(--client-sage-deep)]" />
-            <span>Расписание</span>
+      <div className="grid grid-cols-2 gap-2.5">
+        <Button variant="outline" className="client-surface client-focus h-14 justify-start gap-2.5 rounded-2xl px-3 text-[var(--client-graphite)] shadow-none hover:bg-[#f1f4f1]" onClick={() => navigate('/portal/schedule')}>
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#e4eae4]"><Calendar className="h-[18px] w-[18px] text-[var(--client-sage-deep)]" /></span>
+            <span className="min-w-0 text-sm font-semibold">Расписание</span>
         </Button>
-        <Button className="client-surface client-focus h-20 text-[var(--client-graphite)] hover:bg-[#f1f4f1] flex flex-col items-center justify-center gap-1" onClick={openWhatsApp}>
-            <MessageCircle className="w-6 h-6 text-[var(--client-sage-deep)]" />
-            <span>Чат с админом</span>
+        <Button variant="outline" className="client-surface client-focus h-14 justify-start gap-2.5 rounded-2xl px-3 text-[var(--client-graphite)] shadow-none hover:bg-[#f1f4f1]" onClick={openWhatsApp}>
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#e4eae4]"><MessageCircle className="h-[18px] w-[18px] text-[var(--client-sage-deep)]" /></span>
+            <span className="min-w-0 text-left text-sm font-semibold leading-tight">Связаться</span>
         </Button>
       </div>
 

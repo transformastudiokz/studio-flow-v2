@@ -1,5 +1,5 @@
 import { format, parseISO } from "date-fns";
-import { AlertTriangle, CircleSlash2, LockKeyhole, Star, Users } from "lucide-react";
+import { AlertTriangle, CircleSlash2, EyeOff, LockKeyhole, Star, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   formatCoachShortName,
@@ -55,6 +55,7 @@ export function ScheduleSessionCard({ session, compact = false, hasConflict = fa
           <span className="flex min-w-0 shrink items-center justify-end gap-0.5">
             {hasConflict && !isClosed && !isCancelled ? <AlertTriangle className="h-3 w-3 shrink-0 text-red-500" aria-label="Конфликт времени" /> : null}
             {isCancelled ? <CircleSlash2 className="h-3 w-3 shrink-0 text-red-600" aria-label="Отменено" /> : isClosed ? <LockKeyhole className="h-3 w-3 shrink-0 text-slate-600" aria-label="Запись закрыта" /> : null}
+            {session.is_client_visible === false ? <EyeOff className="h-3 w-3 shrink-0 text-slate-500" aria-label="Скрыто от клиентов" /> : null}
             {(session.firstBookingCount || 0) > 0 ? (
               <span className="inline-flex shrink-0 items-center gap-px text-[9px] font-semibold text-amber-700" title={`Впервые записаны: ${session.firstBookingCount}`}>
                 <Star className="h-2.5 w-2.5 fill-amber-400 text-amber-500" />{session.firstBookingCount}
@@ -103,6 +104,7 @@ export function ScheduleSessionCard({ session, compact = false, hasConflict = fa
         </span>
         <span className="flex items-center gap-1">
           {hasConflict ? <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-red-500" aria-label="Конфликт времени" /> : null}
+          {session.is_client_visible === false ? <EyeOff className="h-3.5 w-3.5 shrink-0 text-slate-500" aria-label="Скрыто от клиентов" /> : null}
         </span>
       </div>
       <div className="mt-0.5 line-clamp-2 pl-1 text-[12px] font-semibold leading-tight text-foreground">
