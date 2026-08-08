@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Plus, Trash2, Edit, Loader2, Check } from "lucide-react";
+import { Plus, Trash2, Edit, Loader2, Eye, EyeOff } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 
 const SubscriptionPlans = () => {
@@ -34,7 +34,8 @@ const SubscriptionPlans = () => {
     visits_count: "",
     duration_days: "30",
     description: "",
-    is_active: true
+    is_active: true,
+    is_visible_in_client_portal: true
   });
 
   // 1. Загрузка тарифов
@@ -60,7 +61,8 @@ const SubscriptionPlans = () => {
         visits_count: formData.visits_count && formData.visits_count !== "0" ? Number(formData.visits_count) : null,
         duration_days: Number(formData.duration_days),
         description: formData.description,
-        is_active: formData.is_active
+        is_active: formData.is_active,
+        is_visible_in_client_portal: formData.is_visible_in_client_portal
       };
 
       if (editingPlan) {
@@ -75,7 +77,7 @@ const SubscriptionPlans = () => {
       toast.success(editingPlan ? "Тариф обновлен" : "Тариф создан");
       setIsOpen(false);
       setEditingPlan(null);
-      setFormData({ name: "", price: "", visits_count: "", duration_days: "30", description: "", is_active: true });
+      setFormData({ name: "", price: "", visits_count: "", duration_days: "30", description: "", is_active: true, is_visible_in_client_portal: true });
       queryClient.invalidateQueries({ queryKey: ["subscription-plans"] });
     },
     onError: (err: any) => toast.error("Ошибка: " + err.message)
@@ -102,14 +104,15 @@ const SubscriptionPlans = () => {
       visits_count: plan.visits_count ? plan.visits_count.toString() : "",
       duration_days: plan.duration_days ? plan.duration_days.toString() : "30",
       description: plan.description || "",
-      is_active: plan.is_active
+      is_active: plan.is_active,
+      is_visible_in_client_portal: plan.is_visible_in_client_portal ?? true
     });
     setIsOpen(true);
   };
 
   const openCreate = () => {
     setEditingPlan(null);
-    setFormData({ name: "", price: "", visits_count: "", duration_days: "30", description: "", is_active: true });
+    setFormData({ name: "", price: "", visits_count: "", duration_days: "30", description: "", is_active: true, is_visible_in_client_portal: true });
     setIsOpen(true);
   };
 
@@ -202,7 +205,18 @@ const SubscriptionPlans = () => {
                       {plan.price.toLocaleString()} ₸
                     </div>
                   </div>
-                  {!plan.is_active && <span className="bg-gray-200 text-gray-600 text-xs px-2 py-1 rounded">Архив</span>}
+                  <div className="flex flex-col items-end gap-1.5">
+                    {!plan.is_active && <span className="bg-gray-200 text-gray-600 text-xs px-2 py-1 rounded">Архив</span>}
+                    {plan.is_visible_in_client_portal !== false ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">
+                        <Eye className="h-3 w-3" /> В кабинете клиента
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">
+                        <EyeOff className="h-3 w-3" /> Скрыт от клиентов
+                      </span>
+                    )}
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="flex-1 flex flex-col justify-between">
@@ -286,6 +300,17 @@ const SubscriptionPlans = () => {
             <div className="flex items-center space-x-2 border p-3 rounded-md bg-muted/20">
                 <Switch checked={formData.is_active} onCheckedChange={c => setFormData({...formData, is_active: c})} />
                 <Label>Активен</Label>
+            </div>
+            <div className="flex items-start justify-between gap-4 rounded-md border bg-muted/20 p-3">
+                <div className="space-y-1">
+                  <Label htmlFor="client-portal-visibility">Отображать в личном кабинете клиента</Label>
+                  <p className="text-xs text-muted-foreground">Тариф появится во вкладке «Все тарифы». Отключение не влияет на уже выданные абонементы.</p>
+                </div>
+                <Switch
+                  id="client-portal-visibility"
+                  checked={formData.is_visible_in_client_portal}
+                  onCheckedChange={c => setFormData({...formData, is_visible_in_client_portal: c})}
+                />
             </div>
           </div>
           <DialogFooter>

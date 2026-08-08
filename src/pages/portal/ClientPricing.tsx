@@ -10,7 +10,12 @@ const ClientPricing = () => {
   const { data: plans, isLoading } = useQuery({
     queryKey: ["public_plans"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("subscription_plans").select("*").eq('is_active', true).order("price");
+      const { data, error } = await supabase
+        .from("subscription_plans")
+        .select("*")
+        .eq("is_active", true)
+        .eq("is_visible_in_client_portal", true)
+        .order("price");
       if (error) throw error;
       return data;
     },
@@ -42,7 +47,7 @@ const ClientPricing = () => {
 
         {isLoading ? (
           <div className="flex justify-center p-8"><Loader2 className="animate-spin text-primary" /></div>
-        ) : (
+        ) : plans?.length ? (
           <div className="grid gap-4 md:grid-cols-2">
             {plans?.map((plan: any) => (
               <div key={plan.id} className="client-surface overflow-hidden">
@@ -93,6 +98,10 @@ const ClientPricing = () => {
                 </div>
               </div>
             ))}
+          </div>
+        ) : (
+          <div className="client-surface px-5 py-8 text-center text-sm text-muted-foreground">
+            Сейчас нет доступных для покупки тарифов. Напишите администратору — мы поможем подобрать абонемент.
           </div>
         )}
       </div>
