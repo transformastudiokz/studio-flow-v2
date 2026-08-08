@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { canClientCancel, formatCancellationCutoff, parseCancellationMinutes } from "../src/lib/cancellation";
 import { createClient } from "@supabase/supabase-js";
 import { ensureClientAccount, normalizeClientPhone } from "./_lib/client-account.js";
 
@@ -149,12 +150,19 @@ async function cancelOwnBooking(userId: string, bookingId: string) {
   const session = Array.isArray(booking.session) ? booking.session[0] : booking.session;
   if (!session?.start_time) throw new Error("У занятия не указано время");
 
-  const { data: setting } = await adminClient.from("studio_info").select("value").eq("key", "cancellation_minutes").maybeSingle();
-  const limitMinutes = Math.max(120, Number(setting?.value || 120));
-  const minutesLeft = Math.floor((new Date(session.start_time).getTime() - Date.now()) / 60000);
-  if (minutesLeft < limitMinutes) {
-    const hours = Math.ceil(limitMinutes / 60);
-    throw new Error(`Самостоятельная отмена закрывается за ${hours} часа до занятия. Свяжись с администратором.`);
+  const { data: setting, error: settingError } = await adminClient
+    .from("studio_info")
+    .select("value")
+    .eq("key", "cancellation_minutes")
+    .maybeSingle();
+  if (settingError) throw settingError;
+  const limitMinutes = parseCancellationMinutes(setting?.value);
+  if (limitMinutes === null) {
+    throw new Error("Правило отмены не настроено. Обратитесь к администратору студии.");
+  }
+  if (!canClientCancel(session.start_time, limitMinutes)) {
+    const cutoffLabel = formatCancellationCutoff(limitMinutes);
+    throw new Error(`Самостоятельная отмена закрывается за ${cutoffLabel} до занятия. Свяжись с администратором.`);
   }
   const { error: updateError } = await adminClient.from("bookings").update({ status: "cancelled" }).eq("id", bookingId).eq("status", "booked");
   if (updateError) throw updateError;

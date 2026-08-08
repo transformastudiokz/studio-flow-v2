@@ -27,6 +27,7 @@ import {
   DialogFooter
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { canClientCancel, parseCancellationMinutes } from "@/lib/cancellation";
 
 const ClientSchedule = () => {
   const queryClient = useQueryClient();
@@ -40,6 +41,21 @@ const ClientSchedule = () => {
   // Вычисляем дни для текущей недели
   const weekStart = startOfWeek(addWeeks(new Date(), weekOffset), { weekStartsOn: 1 });
   const days = Array.from({ length: 7 }).map((_, i) => addDays(weekStart, i));
+
+  const { data: cancellationMinutes } = useQuery({
+    queryKey: ['studio_info', 'cancellation_minutes'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('studio_info')
+        .select('value')
+        .eq('key', 'cancellation_minutes')
+        .maybeSingle();
+      if (error) throw error;
+      return parseCancellationMinutes(data?.value);
+    },
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+  });
 
   // Навигация
   const handlePrevWeek = () => setWeekOffset((prev) => prev - 1);
@@ -241,6 +257,9 @@ const ClientSchedule = () => {
             classes.map((session: any) => {
               const startDate = parseISO(session.start_time);
               const isFull = session.seats_left === 0;
+              const cancellationAllowed = cancellationMinutes !== null
+                && cancellationMinutes !== undefined
+                && canClientCancel(startDate, cancellationMinutes);
               
               return (
                 <Card 
@@ -291,16 +310,24 @@ const ClientSchedule = () => {
                                 ) : (
                                 <Button
                                     variant="outline"
-                                    className="client-focus h-11 text-xs border-[#b7c3b8] bg-[#eaf5ed] text-[#3f7a59] px-4"
+                                    className={cn(
+                                      "client-focus h-11 text-xs px-4",
+                                      cancellationAllowed
+                                        ? "border-[#b7c3b8] bg-[#eaf5ed] text-[#3f7a59]"
+                                        : "border-[#e4dfd5] bg-[#ece8df] text-[#6f706b]",
+                                    )}
                                     onClick={() => handleCancel(session.my_booking_id, session.my_subscription_id, session.start_time)}
-                                    disabled={cancelMutation.isPending}
+                                    disabled={cancelMutation.isPending || !cancellationAllowed}
+                                    title={!cancellationAllowed && cancellationMinutes !== null && cancellationMinutes !== undefined
+                                      ? `Отмена закрывается за ${cancellationMinutes} мин. до занятия`
+                                      : undefined}
                                 >
                                     {cancelMutation.isPending ? (
                                         <Loader2 className="w-3 h-3 animate-spin" />
                                     ) : (
                                         <>
-                                            <XCircle className="w-3.5 h-3.5 mr-1.5" />
-                                            <span>Отменить запись</span>
+                                            {cancellationAllowed ? <XCircle className="w-3.5 h-3.5 mr-1.5" /> : <Check className="w-3.5 h-3.5 mr-1.5" />}
+                                            <span>{cancellationAllowed ? "Отменить запись" : "Отмена закрыта"}</span>
                                         </>
                                     )}
                                 </Button>

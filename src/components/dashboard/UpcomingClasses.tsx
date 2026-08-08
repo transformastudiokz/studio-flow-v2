@@ -52,15 +52,15 @@ const occupiesPlace = (status: string) => !["cancelled", "late_cancel", "absent"
 export const UpcomingClasses = () => {
   const queryClient = useQueryClient();
 
-  const { data: cancellationWindow = 90 } = useQuery({
-    queryKey: ["dashboard_cancellation_window"],
+  const { data: cancellationWindow = 0 } = useQuery({
+    queryKey: ["studio_info", "cancellation_minutes"],
     queryFn: async () => {
       const { data } = await supabase
         .from("studio_info")
         .select("value")
         .eq("key", "cancellation_minutes")
         .maybeSingle();
-      return data?.value ? Number.parseInt(data.value, 10) : 90;
+      return data?.value ? Number.parseInt(data.value, 10) : 0;
     },
   });
 

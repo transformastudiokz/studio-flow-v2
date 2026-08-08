@@ -45,11 +45,11 @@ const Attendance = () => {
   const [notifyNote, setNotifyNote] = useState("");
 
   // --- ЗАГРУЗКА ДАННЫХ ---
-  const { data: settings } = useQuery({
-    queryKey: ['app_settings_global'],
+  const { data: cancellationMinutes = 0 } = useQuery({
+    queryKey: ['studio_info', 'cancellation_minutes'],
     queryFn: async () => {
       const { data } = await supabase.from('studio_info').select('value').eq('key', 'cancellation_minutes').single();
-      return { cancellation_window_minutes: data?.value ? parseInt(data.value) : 90 };
+      return data?.value ? parseInt(data.value) : 0;
     }
   });
 
@@ -200,7 +200,7 @@ const Attendance = () => {
   const updateStatusMutation = useMutation({
     mutationFn: async ({ id, status, sessionTime }: { id: string, status: string, sessionDate: string, sessionTime: string }) => {
         if (status === 'cancelled') {
-            const limitMinutes = settings?.cancellation_window_minutes || 90;
+            const limitMinutes = cancellationMinutes;
             const sessionDateTime = parseISO(sessionTime); 
             const now = new Date();
             const diff = differenceInMinutes(sessionDateTime, now);

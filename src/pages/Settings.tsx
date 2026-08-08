@@ -8,13 +8,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Loader2, Save, Settings as SettingsIcon, Info } from "lucide-react";
 import { toast } from "sonner";
+import { parseCancellationMinutes } from "@/lib/cancellation";
 
 const Settings = () => {
   const queryClient = useQueryClient();
   const [loadingStudio, setLoadingStudio] = useState(false);
   
   // Состояния
-  const [minutes, setMinutes] = useState("90");
+  const [minutes, setMinutes] = useState("");
   const [studioData, setStudioData] = useState({
     name: "",
     description: "",
@@ -25,10 +26,10 @@ const Settings = () => {
 
   // 1. ЗАГРУЗКА: Настройки приложения (Берем из studio_info по ключу)
   const { data: cancelSetting } = useQuery({
-    queryKey: ['cancel_setting'],
+    queryKey: ['studio_info', 'cancellation_minutes'],
     queryFn: async () => {
       const { data } = await supabase.from('studio_info').select('value').eq('key', 'cancellation_minutes').single();
-      return data;
+      return parseCancellationMinutes(data?.value);
     }
   });
 
@@ -43,8 +44,8 @@ const Settings = () => {
 
   // Синхронизация данных при загрузке
   useEffect(() => {
-    if (cancelSetting) {
-      setMinutes(cancelSetting.value);
+    if (cancelSetting !== undefined && cancelSetting !== null) {
+      setMinutes(String(cancelSetting));
     }
     if (studioInfoRaw) {
         // Превращаем массив [{key: 'name', value: 'Yoga'}] в объект
@@ -64,15 +65,19 @@ const Settings = () => {
   // --- МУТАЦИЯ 1: Сохранить настройки отмены ---
   const updateSettingsMutation = useMutation({
     mutationFn: async () => {
+       const normalizedMinutes = Number(minutes);
+       if (!Number.isInteger(normalizedMinutes) || normalizedMinutes < 0) {
+         throw new Error("Укажите целое количество минут — ноль или больше");
+       }
        // Upsert = Вставить или Обновить
        const { error } = await supabase
          .from('studio_info')
-         .upsert({ key: 'cancellation_minutes', value: minutes }, { onConflict: 'key' });
+         .upsert({ key: 'cancellation_minutes', value: String(normalizedMinutes) }, { onConflict: 'key' });
        if (error) throw error;
     },
     onSuccess: () => {
       toast.success("Правила отмены сохранены");
-      queryClient.invalidateQueries({ queryKey: ['cancel_setting'] });
+      queryClient.invalidateQueries({ queryKey: ['studio_info', 'cancellation_minutes'] });
     },
     onError: (err) => toast.error(err.message)
   });
@@ -134,7 +139,7 @@ const Settings = () => {
                         className="max-w-[150px]"
                     />
                     <span className="text-sm font-medium text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                        {(parseInt(minutes) / 60).toFixed(1)} ч.
+                        {Number.isFinite(Number(minutes)) && minutes !== "" ? `${(Number(minutes) / 60).toFixed(1)} ч.` : "—"}
                     </span>
                 </div>
                 <div className="text-xs text-gray-500 bg-blue-50 p-3 rounded-md flex gap-2 items-start mt-2">
