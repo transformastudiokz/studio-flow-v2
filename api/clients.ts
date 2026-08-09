@@ -1,6 +1,11 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
-import { ensureClientAccount } from "./_lib/client-account.js";
+import {
+  clientAuthEmail,
+  clientTemporaryPassword,
+  ensureClientAccount,
+  normalizeClientPhone,
+} from "./_lib/client-account.js";
 
 const url = process.env.VITE_SUPABASE_URL || "";
 const secret = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
@@ -22,6 +27,49 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
     if (!await requireStaff(req)) return res.status(403).json({ error: "Доступ только сотрудникам студии" });
+    if (req.body?.action === "reset-client-access") {
+      const clientId = String(req.body?.clientId || "");
+      if (!clientId) return res.status(400).json({ error: "Клиент не указан" });
+
+      const { data: profile, error: profileError } = await adminClient!
+        .from("profiles")
+        .select("id,first_name,last_name,phone,role")
+        .eq("id", clientId)
+        .single();
+      if (profileError || !profile) throw profileError || new Error("Клиент не найден");
+      if (profile.role !== "client") return res.status(400).json({ error: "Это не учётная запись клиента" });
+
+      const phone = normalizeClientPhone(profile.phone || "");
+      if (phone.length !== 11) return res.status(400).json({ error: "Сначала укажи корректный телефон клиента" });
+
+      const { data: authData, error: authLookupError } = await adminClient!.auth.admin.getUserById(clientId);
+      if (authLookupError || !authData.user) {
+        return res.status(409).json({ error: "Карточка клиента есть, но доступ повреждён. Нужно восстановить учётную запись." });
+      }
+
+      const temporaryPassword = clientTemporaryPassword(phone);
+      const { error: updateError } = await adminClient!.auth.admin.updateUserById(clientId, {
+        email: clientAuthEmail(phone),
+        email_confirm: true,
+        password: temporaryPassword,
+        user_metadata: {
+          ...authData.user.user_metadata,
+          first_name: profile.first_name || "",
+          last_name: profile.last_name || "",
+          phone,
+          role: "client",
+        },
+      });
+      if (updateError) throw updateError;
+
+      return res.status(200).json({
+        firstName: profile.first_name || "",
+        login: phone,
+        phone,
+        temporaryPassword,
+        portalUrl: "https://crm-fitness-one.vercel.app/portal/login",
+      });
+    }
     if (req.body?.action === "update-subscription") {
       const subscriptionId = String(req.body?.subscriptionId || "");
       const saleDate = String(req.body?.saleDate || "");

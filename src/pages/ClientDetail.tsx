@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, User, Phone, Mail, Calendar, CreditCard, History, Edit, Trash2, CalendarSync, ChevronRight, Loader2 } from "lucide-react";
+import { ArrowLeft, User, Phone, Mail, Calendar, CreditCard, History, Edit, Trash2, CalendarSync, ChevronRight, Loader2, KeyRound, Copy, MessageCircle, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { addDays, format, parseISO } from "date-fns";
 import { ru } from "date-fns/locale";
@@ -23,6 +23,9 @@ export default function ClientDetail() {
   const queryClient = useQueryClient();
   const [isSellModalOpen, setIsSellModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isAccessModalOpen, setIsAccessModalOpen] = useState(false);
+  const [accessData, setAccessData] = useState<null | { firstName: string; login: string; phone: string; temporaryPassword: string; portalUrl: string }>(null);
+  const [accessCopied, setAccessCopied] = useState(false);
   const [selectedSubscription, setSelectedSubscription] = useState<any>(null);
   const [subscriptionForm, setSubscriptionForm] = useState({ sale_date: "", activation_date: "", end_date: "" });
   const [selectedPlanId, setSelectedPlanId] = useState("");
@@ -220,6 +223,54 @@ export default function ClientDetail() {
       toast({ title: "Не удалось сохранить", description: error.message, variant: "destructive" });
     },
   });
+
+  const accessMessage = accessData
+    ? [
+        `Здравствуйте, ${accessData.firstName || client?.first_name || ""}!`,
+        "",
+        "Для вас открыт доступ в личный кабинет Balance Studio.",
+        "",
+        "Ссылка для входа:",
+        accessData.portalUrl,
+        "",
+        "Логин:",
+        accessData.login,
+        "",
+        "Временный пароль:",
+        accessData.temporaryPassword,
+      ].join("\n")
+    : "";
+
+  const resetAccessMutation = useMutation({
+    mutationFn: async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      const response = await fetch("/api/clients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token || ""}` },
+        body: JSON.stringify({ action: "reset-client-access", clientId: id }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Не удалось сформировать доступ");
+      return result;
+    },
+    onSuccess: (result) => {
+      setAccessData(result);
+      setAccessCopied(false);
+      toast({ title: "Доступ сформирован", description: "Теперь можно отправить сообщение в WhatsApp" });
+    },
+    onError: (error: any) => toast({ title: "Не удалось сформировать доступ", description: error.message, variant: "destructive" }),
+  });
+
+  const copyAccessMessage = async () => {
+    await navigator.clipboard.writeText(accessMessage);
+    setAccessCopied(true);
+    window.setTimeout(() => setAccessCopied(false), 1800);
+  };
+
+  const openAccessWhatsApp = () => {
+    if (!accessData) return;
+    window.open(`https://wa.me/${accessData.phone}?text=${encodeURIComponent(accessMessage)}`, "_blank", "noopener,noreferrer");
+  };
 
   const openSubscription = (subscription: any) => {
     const sale = subscriptionSales.find((item: any) => item.subscription_id === subscription.id);
@@ -421,6 +472,45 @@ export default function ClientDetail() {
                       </Button>
                     </div>
                   </div>
+                </DialogContent>
+              </Dialog>
+              <Dialog open={isAccessModalOpen} onOpenChange={(open) => { setIsAccessModalOpen(open); if (!open) setAccessData(null); }}>
+                <Button size="sm" variant="outline" onClick={() => setIsAccessModalOpen(true)} disabled={!client?.phone}>
+                  <KeyRound className="mr-2 h-4 w-4" />
+                  Доступ в ЛК
+                </Button>
+                <DialogContent className="sm:max-w-lg">
+                  <DialogHeader>
+                    <DialogTitle>Доступ в личный кабинет</DialogTitle>
+                    <DialogDescription>
+                      {accessData
+                        ? "Проверь сообщение и отправь его клиенту."
+                        : "Будет создан новый временный пароль. Прежний пароль клиента перестанет работать."}
+                    </DialogDescription>
+                  </DialogHeader>
+                  {accessData ? (
+                    <div className="space-y-4">
+                      <div className="whitespace-pre-wrap rounded-xl border bg-muted/35 p-4 text-sm leading-relaxed">{accessMessage}</div>
+                      <DialogFooter className="gap-2 sm:justify-between">
+                        <Button variant="outline" onClick={copyAccessMessage}>
+                          {accessCopied ? <Check className="mr-2 h-4 w-4" /> : <Copy className="mr-2 h-4 w-4" />}
+                          {accessCopied ? "Скопировано" : "Скопировать"}
+                        </Button>
+                        <Button onClick={openAccessWhatsApp}>
+                          <MessageCircle className="mr-2 h-4 w-4" />
+                          Открыть WhatsApp
+                        </Button>
+                      </DialogFooter>
+                    </div>
+                  ) : (
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setIsAccessModalOpen(false)} disabled={resetAccessMutation.isPending}>Отмена</Button>
+                      <Button onClick={() => resetAccessMutation.mutate()} disabled={resetAccessMutation.isPending}>
+                        {resetAccessMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}
+                        {resetAccessMutation.isPending ? "Формируем…" : "Сформировать доступ"}
+                      </Button>
+                    </DialogFooter>
+                  )}
                 </DialogContent>
               </Dialog>
               <Dialog open={isSellModalOpen} onOpenChange={setIsSellModalOpen}>
