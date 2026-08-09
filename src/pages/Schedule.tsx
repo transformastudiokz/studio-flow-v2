@@ -158,6 +158,7 @@ export default function Schedule() {
   useEffect(() => {
     if (latestOnefitRun?.status === "success" || latestOnefitRun?.status === "partial") {
       queryClient.invalidateQueries({ queryKey: ["schedule_sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["schedule_session_details"] });
     }
   }, [latestOnefitRun?.id, latestOnefitRun?.status, queryClient]);
 

@@ -118,6 +118,8 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
         })),
       } as ScheduleSession & { bookings: Array<ScheduleSession["bookings"][number] & { clientStatus?: ClientStatus }> };
     },
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: "always",
   });
 
   const requestScheduleApi = async (payload: Record<string, unknown>) => {
