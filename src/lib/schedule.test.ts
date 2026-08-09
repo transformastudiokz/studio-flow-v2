@@ -6,6 +6,7 @@ import {
   occupiesPlace,
   resolveAvailableRoom,
   scheduleStartHour,
+  showsInSessionParticipants,
   showsFirstBookingIndicator,
   sessionConflict,
   sessionsOverlap,
@@ -47,6 +48,15 @@ describe("schedule business rules", () => {
     expect(showsFirstBookingIndicator("absent")).toBe(true);
     expect(showsFirstBookingIndicator("cancelled")).toBe(false);
     expect(showsFirstBookingIndicator("late_cancel")).toBe(false);
+  });
+
+  it("keeps cancellations in history but removes them from the session participant list", () => {
+    expect(showsInSessionParticipants("booked")).toBe(true);
+    expect(showsInSessionParticipants("completed")).toBe(true);
+    expect(showsInSessionParticipants("absent")).toBe(true);
+    expect(showsInSessionParticipants("transferred")).toBe(true);
+    expect(showsInSessionParticipants("cancelled")).toBe(false);
+    expect(showsInSessionParticipants("late_cancel")).toBe(false);
   });
 
   it("normalizes rooms and Kazakhstan phone numbers", () => {

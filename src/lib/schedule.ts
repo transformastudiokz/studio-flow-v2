@@ -65,6 +65,10 @@ export const occupiesPlace = (status: string) =>
 export const showsFirstBookingIndicator = (status: string) =>
   !["cancelled", "late_cancel"].includes(status);
 
+/** Cancelled bookings stay in history, but are not participants of the session. */
+export const showsInSessionParticipants = (status: string) =>
+  !["cancelled", "late_cancel"].includes(status);
+
 export const activeBookings = (session: Pick<ScheduleSession, "bookings">) =>
   (session.bookings || []).filter((booking) => occupiesPlace(booking.status));
 

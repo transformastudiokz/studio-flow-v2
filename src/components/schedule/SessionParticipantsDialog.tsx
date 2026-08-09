@@ -12,6 +12,7 @@ import {
   normalizePhone,
   normalizeRoom,
   occupiesPlace,
+  showsInSessionParticipants,
   type ScheduleClient,
   type ScheduleSession,
 } from "@/lib/schedule";
@@ -206,12 +207,26 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
     mutationFn: async (bookingId: string) => {
       await updateBookingStatus(bookingId, "cancelled");
     },
-    onSuccess: async () => {
+    onMutate: async (bookingId) => {
+      const queryKey = ["schedule_session_details", session?.id];
+      await queryClient.cancelQueries({ queryKey });
+      const previous = queryClient.getQueryData<ScheduleSession>(queryKey);
+      queryClient.setQueryData<ScheduleSession>(queryKey, (current) => current ? {
+        ...current,
+        bookings: (current.bookings || []).filter((booking) => booking.id !== bookingId),
+      } : current);
+      return { previous, queryKey };
+    },
+    onSuccess: () => {
       setDeleteBooking(null);
-      await refresh();
+      refresh();
       toast.success("Запись удалена, место освобождено");
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error, _bookingId, context) => {
+      if (context?.previous) queryClient.setQueryData(context.queryKey, context.previous);
+      toast.error(error.message);
+    },
+    onSettled: () => refresh(),
   });
 
   const moveBooking = useMutation({
@@ -300,8 +315,10 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
   const onefitParticipants = (details?.onefit_bookings || session.onefit_bookings || []).filter((booking) => booking.is_active);
   const occupied = (details?.bookings || session.bookings || []).filter((booking) => occupiesPlace(booking.status)).length + onefitParticipants.length;
   const selectedClient = clientOptions.find((client) => client.id === selectedClientId);
-  const activeParticipants = (details?.bookings || []).filter((booking) =>
-    booking.isTransferred || !["cancelled", "late_cancel"].includes(booking.status),
+  // A transferred booking remains visible as history until it is explicitly removed.
+  // Explicit removal changes its status to cancelled, which must always hide it here.
+  const activeParticipants = (details?.bookings || []).filter(
+    (booking) => showsInSessionParticipants(booking.status),
   );
 
   const openWhatsApp = (client: ScheduleClient | null) => {
