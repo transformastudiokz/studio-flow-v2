@@ -81,7 +81,7 @@ const NewClient = () => {
     const lines = [
       `Здравствуйте, ${created.name}!`,
       ``,
-      `Ваши данные для входа в Balance Yoga Studio:`,
+      `Ваши данные для входа в Balance Studio:`,
       `📱 Логин: ${created.phone}`,
       `🔑 Пароль: ${created.password}`,
       ``,

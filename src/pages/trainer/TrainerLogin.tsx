@@ -61,7 +61,7 @@ const TrainerLogin = () => {
             <span className="text-3xl">🏋️</span>
           </div>
           <CardTitle className="text-xl font-bold">Портал тренера</CardTitle>
-          <CardDescription>Balance Yoga Studio</CardDescription>
+          <CardDescription>Balance Studio</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4 pt-4">
           <div className="space-y-2">

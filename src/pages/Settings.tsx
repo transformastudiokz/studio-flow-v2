@@ -53,7 +53,7 @@ const Settings = () => {
         studioInfoRaw.forEach((item: any) => infoMap[item.key] = item.value);
         
         setStudioData({
-            name: infoMap.name || "Balance Yoga Studio",
+            name: infoMap.name || "Balance Studio",
             description: infoMap.description || "",
             address: infoMap.address || "",
             phone: infoMap.phone || "",
