@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
@@ -51,6 +52,7 @@ const occupiesPlace = (status: string) => !["cancelled", "late_cancel", "absent"
 
 export const UpcomingClasses = () => {
   const queryClient = useQueryClient();
+  const [pendingStatusIds, setPendingStatusIds] = useState<Set<string>>(() => new Set());
 
   const { data: cancellationWindow = 0 } = useQuery({
     queryKey: ["studio_info", "cancellation_minutes"],
@@ -128,6 +130,7 @@ export const UpcomingClasses = () => {
 
       await updateBookingStatus(bookingId, status);
     },
+    onMutate: ({ bookingId }) => setPendingStatusIds((current) => new Set(current).add(bookingId)),
     onSuccess: () => {
       toast.success("Статус посещения обновлён");
       queryClient.invalidateQueries({ queryKey: ["dashboard_upcoming_classes"] });
@@ -136,6 +139,11 @@ export const UpcomingClasses = () => {
     onError: (error: Error) => {
       if (error.message !== "Отмена прервана") toast.error(error.message);
     },
+    onSettled: (_data, _error, variables) => setPendingStatusIds((current) => {
+      const next = new Set(current);
+      next.delete(variables.bookingId);
+      return next;
+    }),
   });
 
   const openWhatsApp = (client: DashboardClient | null, session: DashboardClass) => {
@@ -277,7 +285,7 @@ export const UpcomingClasses = () => {
 
                               <Select
                                 value={booking.status}
-                                disabled={updateStatusMutation.isPending}
+                                disabled={pendingStatusIds.has(booking.id)}
                                 onValueChange={(value) =>
                                   updateStatusMutation.mutate({
                                     bookingId: booking.id,

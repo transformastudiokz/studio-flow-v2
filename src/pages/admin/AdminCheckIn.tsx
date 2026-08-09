@@ -17,7 +17,7 @@ const AdminCheckIn = () => {
 
   const [weekOffset, setWeekOffset] = useState(0);
   const [selectedDay, setSelectedDay] = useState(new Date());
-  const [pendingBookingId, setPendingBookingId] = useState<string | null>(null);
+  const [pendingBookingIds, setPendingBookingIds] = useState<Set<string>>(() => new Set());
   const [walkInSessionId, setWalkInSessionId] = useState<string | null>(null);
   const [walkInSearch, setWalkInSearch] = useState("");
   const [walkInClientId, setWalkInClientId] = useState<string | null>(null);
@@ -82,14 +82,18 @@ const AdminCheckIn = () => {
     mutationFn: async ({ bookingId, status }: { bookingId: string; status: string }) => {
       await updateBookingStatus(bookingId, status);
     },
+    onMutate: ({ bookingId }) => setPendingBookingIds((current) => new Set(current).add(bookingId)),
     onSuccess: () => {
-      setPendingBookingId(null);
       queryClient.invalidateQueries({ queryKey: ["checkin_day", format(selectedDay, "yyyy-MM-dd")] });
     },
     onError: (err: any) => {
-      setPendingBookingId(null);
       toast.error(err.message);
     },
+    onSettled: (_data, _error, variables) => setPendingBookingIds((current) => {
+      const next = new Set(current);
+      next.delete(variables.bookingId);
+      return next;
+    }),
   });
 
   const deleteBookingMutation = useMutation({
@@ -298,14 +302,13 @@ const AdminCheckIn = () => {
                         </div>
                         <Select
                           value={booking.status}
-                          disabled={pendingBookingId === booking.id}
+                          disabled={pendingBookingIds.has(booking.id)}
                           onValueChange={(val) => {
-                            setPendingBookingId(booking.id);
                             updateStatusMutation.mutate({ bookingId: booking.id, status: val });
                           }}
                         >
                           <SelectTrigger className="w-[100px] h-7 text-[11px] shrink-0 font-medium">
-                            {pendingBookingId === booking.id ? (
+                            {pendingBookingIds.has(booking.id) ? (
                               <Loader2 className="h-3 w-3 animate-spin mx-auto" />
                             ) : (
                               <SelectValue />

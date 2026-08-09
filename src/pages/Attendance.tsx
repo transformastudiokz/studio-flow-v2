@@ -32,7 +32,7 @@ const Attendance = () => {
   const [filterInstructor, setFilterInstructor] = useState("all");
   const [filterClassType, setFilterClassType] = useState("all");
 
-  const [pendingBookingId, setPendingBookingId] = useState<string | null>(null);
+  const [pendingBookingIds, setPendingBookingIds] = useState<Set<string>>(() => new Set());
   const [isBookDialogOpen, setIsBookDialogOpen] = useState(false);
   const [bookDate, setBookDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [bookForm, setBookForm] = useState({ session_id: "", client_id: "" });
@@ -214,18 +214,22 @@ const Attendance = () => {
         }
         await updateBookingStatus(id, status);
     },
+    onMutate: ({ id }) => setPendingBookingIds((current) => new Set(current).add(id)),
     onSuccess: () => {
         toast.success("Статус изменен");
-        setPendingBookingId(null);
         queryClient.invalidateQueries({ queryKey: ['attendance_report'] });
         queryClient.invalidateQueries({ queryKey: ['dashboard_upcoming_classes'] });
     },
     onError: (err: any) => {
-        setPendingBookingId(null);
         if (err.message !== "Отмена прервана администратором") {
             toast.error("Ошибка: " + err.message);
         }
-    }
+    },
+    onSettled: (_data, _error, variables) => setPendingBookingIds((current) => {
+      const next = new Set(current);
+      next.delete(variables.id);
+      return next;
+    }),
   });
 
   // --- ЛОГИКА WHATSAPP (ОБНОВЛЕННЫЕ ИКОНКИ) ---
@@ -507,9 +511,8 @@ const Attendance = () => {
                                                         <div className="flex items-center gap-1">
                                                         <Select
                                                             defaultValue={booking.status}
-                                                            disabled={pendingBookingId === booking.id}
+                                                            disabled={pendingBookingIds.has(booking.id)}
                                                             onValueChange={(val) => {
-                                                                setPendingBookingId(booking.id);
                                                                 updateStatusMutation.mutate({
                                                                     id: booking.id,
                                                                     status: val,
@@ -629,9 +632,8 @@ const Attendance = () => {
                                           <div className="flex gap-2 items-center">
                                           <Select
                                               defaultValue={booking.status}
-                                              disabled={pendingBookingId === booking.id}
+                                              disabled={pendingBookingIds.has(booking.id)}
                                               onValueChange={(val) => {
-                                                  setPendingBookingId(booking.id);
                                                   updateStatusMutation.mutate({
                                                       id: booking.id,
                                                       status: val,

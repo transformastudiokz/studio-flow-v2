@@ -64,6 +64,7 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
   const [transferBooking, setTransferBooking] = useState<ScheduleSession["bookings"][number] | null>(null);
   const [targetSessionId, setTargetSessionId] = useState("");
   const [deleteBooking, setDeleteBooking] = useState<ScheduleSession["bookings"][number] | null>(null);
+  const [pendingStatusIds, setPendingStatusIds] = useState<Set<string>>(() => new Set());
   const [clientForm, setClientForm] = useState({ firstName: "", lastName: "", phone: "", email: "" });
   const clientFormDirty = showCreate && Object.values(clientForm).some((value) => value.trim().length > 0);
 
@@ -180,21 +181,25 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
     }).slice(0, 20);
   }, [clientOptions, search]);
 
-  const refresh = async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["schedule_session_details", session?.id] }),
-      queryClient.invalidateQueries({ queryKey: ["schedule_sessions"] }),
-      queryClient.invalidateQueries({ queryKey: ["dashboard_upcoming_classes"] }),
-      queryClient.invalidateQueries({ queryKey: ["attendance_report"] }),
-    ]);
+  const refresh = () => {
+    void queryClient.invalidateQueries({ queryKey: ["schedule_session_details", session?.id] });
+    void queryClient.invalidateQueries({ queryKey: ["schedule_sessions"] });
+    void queryClient.invalidateQueries({ queryKey: ["dashboard_upcoming_classes"] });
+    void queryClient.invalidateQueries({ queryKey: ["attendance_report"] });
   };
 
   const updateStatus = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
       await updateBookingStatus(id, status);
     },
-    onSuccess: async () => { await refresh(); toast.success("Статус посещения сохранён"); },
+    onMutate: ({ id }) => setPendingStatusIds((current) => new Set(current).add(id)),
+    onSuccess: () => { refresh(); toast.success("Статус посещения сохранён"); },
     onError: (error: Error) => toast.error(error.message),
+    onSettled: (_data, _error, variables) => setPendingStatusIds((current) => {
+      const next = new Set(current);
+      next.delete(variables.id);
+      return next;
+    }),
   });
 
   const removeBooking = useMutation({
@@ -396,7 +401,7 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
                         <p className="truncate text-[10px] leading-3.5 text-muted-foreground">{client?.phone || "Телефон не указан"}</p>
                       </div>
                       <Button size="icon" variant="ghost" className="hidden h-8 w-8 justify-self-center text-green-600 sm:inline-flex" aria-label={`Написать ${client?.first_name || "клиенту"} в WhatsApp`} title="Написать в WhatsApp" onClick={() => openWhatsApp(client)} disabled={!client?.phone}><MessageCircle className="h-4 w-4" /></Button>
-                      <Select value={displayStatus} disabled={updateStatus.isPending || booking.isTransferred} onValueChange={(value) => {
+                      <Select value={displayStatus} disabled={pendingStatusIds.has(booking.id) || booking.isTransferred} onValueChange={(value) => {
                         if (value === "transferred") {
                           setTransferBooking(booking);
                           setTargetSessionId("");

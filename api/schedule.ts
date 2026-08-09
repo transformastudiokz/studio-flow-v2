@@ -127,13 +127,15 @@ async function setBookingAttendanceStatus(bookingId: string, nextStatus: string)
       && Number(subscription.visits_remaining) > 0
       && (!subscription.start_date || subscription.start_date <= visitDate)
       && (!subscription.end_date || subscription.end_date >= visitDate);
-    if (!subscriptionIsEligible) {
-      throw new Error("У клиента нет подходящего действующего абонемента. Сначала оформи абонемент, затем отметь посещение.");
-    }
-    targetSubscriptionId = subscription.id;
+    // Посещаемость и оплата — разные факты. Администратор должен иметь
+    // возможность отметить результат занятия даже у пробного/неоплаченного
+    // клиента. При отсутствии подходящего абонемента сохраняем статус, но
+    // ничего не списываем.
+    targetSubscriptionId = subscriptionIsEligible ? subscription.id : null;
   }
 
-  const updatePayload = targetSubscriptionId
+  const shouldUpdateSubscriptionLink = willCharge && !wasCharged;
+  const updatePayload = shouldUpdateSubscriptionLink
     ? { status: nextStatus, subscription_id: targetSubscriptionId }
     : { status: nextStatus };
   const { data: updatedBooking, error: statusError } = await adminClient.from("bookings")
