@@ -327,6 +327,22 @@ export default function ClientDetail() {
 
   const updateSubscriptionMutation = useMutation({
     mutationFn: async () => {
+      const visitsTotal = Number(subscriptionForm.visits_total);
+      const visitsRemaining = Number(subscriptionForm.visits_remaining);
+      const reason = subscriptionForm.reason.trim();
+
+      if (!subscriptionForm.sale_date) throw new Error("Укажи дату продажи");
+      if (!Number.isInteger(visitsTotal) || visitsTotal < 0) {
+        throw new Error("Укажи корректное общее количество занятий");
+      }
+      if (!Number.isInteger(visitsRemaining) || visitsRemaining < 0 || visitsRemaining > visitsTotal) {
+        throw new Error("Остаток должен быть от нуля до общего количества занятий");
+      }
+      if (subscriptionForm.activation_date && subscriptionForm.end_date && subscriptionForm.end_date < subscriptionForm.activation_date) {
+        throw new Error("Дата окончания не может быть раньше даты активации");
+      }
+      if (reason.length < 3) throw new Error("Укажи причину корректировки — минимум 3 символа");
+
       const { data: { session } } = await supabase.auth.getSession();
       const response = await fetch("/api/clients", {
         method: "POST",
@@ -337,10 +353,10 @@ export default function ClientDetail() {
           saleDate: subscriptionForm.sale_date,
           activationDate: subscriptionForm.activation_date || null,
           endDate: subscriptionForm.end_date || null,
-          visitsTotal: Number(subscriptionForm.visits_total),
-          visitsRemaining: Number(subscriptionForm.visits_remaining),
+          visitsTotal,
+          visitsRemaining,
           isActive: subscriptionForm.is_active === "true",
-          reason: subscriptionForm.reason.trim(),
+          reason,
         }),
       });
       const result = await response.json();
@@ -800,15 +816,16 @@ export default function ClientDetail() {
               <p className="text-xs text-muted-foreground">Для уважительного переноса укажи новую крайнюю дату вручную.</p>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="subscription-adjustment-reason">Причина корректировки</Label>
+              <Label htmlFor="subscription-adjustment-reason">Причина корректировки <span className="text-destructive">*</span></Label>
               <Textarea
                 id="subscription-adjustment-reason"
+                aria-required="true"
                 value={subscriptionForm.reason}
                 onChange={(event) => setSubscriptionForm({ ...subscriptionForm, reason: event.target.value })}
                 placeholder="Например: разрешён повторный перенос пробного занятия"
                 rows={3}
               />
-              <p className="text-xs text-muted-foreground">Обязательное поле. Причина останется в журнале изменений.</p>
+              <p className="text-xs text-muted-foreground">Напиши минимум 3 символа. Причина останется в журнале изменений.</p>
             </div>
             {subscriptionAdjustments.length > 0 && (
               <div className="rounded-lg border bg-muted/25 p-3">
@@ -831,15 +848,7 @@ export default function ClientDetail() {
             <Button variant="outline" onClick={() => setSelectedSubscription(null)} disabled={updateSubscriptionMutation.isPending}>Отмена</Button>
             <Button
               onClick={() => updateSubscriptionMutation.mutate()}
-              disabled={
-                !subscriptionForm.sale_date ||
-                subscriptionForm.reason.trim().length < 3 ||
-                !Number.isInteger(Number(subscriptionForm.visits_total)) ||
-                !Number.isInteger(Number(subscriptionForm.visits_remaining)) ||
-                Number(subscriptionForm.visits_remaining) < 0 ||
-                Number(subscriptionForm.visits_remaining) > Number(subscriptionForm.visits_total) ||
-                updateSubscriptionMutation.isPending
-              }
+              disabled={updateSubscriptionMutation.isPending}
             >
               {updateSubscriptionMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Сохранить
