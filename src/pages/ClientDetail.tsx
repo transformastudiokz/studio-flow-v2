@@ -27,7 +27,15 @@ export default function ClientDetail() {
   const [accessData, setAccessData] = useState<null | { firstName: string; login: string; phone: string; temporaryPassword: string; portalUrl: string }>(null);
   const [accessCopied, setAccessCopied] = useState(false);
   const [selectedSubscription, setSelectedSubscription] = useState<any>(null);
-  const [subscriptionForm, setSubscriptionForm] = useState({ sale_date: "", activation_date: "", end_date: "" });
+  const [subscriptionForm, setSubscriptionForm] = useState({
+    sale_date: "",
+    activation_date: "",
+    end_date: "",
+    visits_total: "0",
+    visits_remaining: "0",
+    is_active: "false",
+    reason: "",
+  });
   const [selectedPlanId, setSelectedPlanId] = useState("");
   const [saleDate, setSaleDate] = useState(() => format(new Date(), "yyyy-MM-dd"));
   const [editForm, setEditForm] = useState({
@@ -77,6 +85,21 @@ export default function ClientDetail() {
       if (error) throw error;
       return data || [];
     }
+  });
+
+  const { data: subscriptionAdjustments = [] } = useQuery({
+    queryKey: ['subscription_adjustments', selectedSubscription?.id],
+    enabled: Boolean(selectedSubscription?.id),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('subscription_adjustment_log')
+        .select('id,changed_at,reason,old_data,new_data')
+        .eq('subscription_id', selectedSubscription.id)
+        .order('changed_at', { ascending: false })
+        .limit(10);
+      if (error) throw error;
+      return data || [];
+    },
   });
 
   // Загрузка истории посещений
@@ -284,6 +307,10 @@ export default function ClientDetail() {
           : format(parseISO(subscription.created_at), "yyyy-MM-dd"),
       activation_date: subscription.activation_date ? format(parseISO(subscription.activation_date), "yyyy-MM-dd") : "",
       end_date: subscription.end_date ? format(parseISO(subscription.end_date), "yyyy-MM-dd") : "",
+      visits_total: String(subscription.visits_total ?? 0),
+      visits_remaining: String(subscription.visits_remaining ?? 0),
+      is_active: subscription.is_active ? "true" : "false",
+      reason: "",
     });
   };
 
@@ -310,6 +337,10 @@ export default function ClientDetail() {
           saleDate: subscriptionForm.sale_date,
           activationDate: subscriptionForm.activation_date || null,
           endDate: subscriptionForm.end_date || null,
+          visitsTotal: Number(subscriptionForm.visits_total),
+          visitsRemaining: Number(subscriptionForm.visits_remaining),
+          isActive: subscriptionForm.is_active === "true",
+          reason: subscriptionForm.reason.trim(),
         }),
       });
       const result = await response.json();
@@ -320,8 +351,10 @@ export default function ClientDetail() {
       await queryClient.invalidateQueries({ queryKey: ["client_subscriptions", id] });
       await queryClient.invalidateQueries({ queryKey: ["clients_with_subs"] });
       await queryClient.invalidateQueries({ queryKey: ["user_subscriptions_full"] });
+      await queryClient.invalidateQueries({ queryKey: ["subscription_adjustments"] });
+      await queryClient.invalidateQueries({ queryKey: ["client_subscription_sales", id] });
       setSelectedSubscription(null);
-      toast({ title: "Абонемент обновлён", description: "Новые даты сохранены" });
+      toast({ title: "Абонемент обновлён", description: "Количество, срок и статус синхронизированы" });
     },
     onError: (error: any) => toast({ title: "Не удалось сохранить", description: error.message, variant: "destructive" }),
   });
@@ -712,10 +745,46 @@ export default function ClientDetail() {
           <DialogHeader>
             <DialogTitle>{selectedSubscription?.plan?.name || "Абонемент"}</DialogTitle>
             <DialogDescription>
-              Количество занятий и стоимость сохранены без изменений. Здесь можно исправить даты или продлить срок для переноса.
+              Скорректируй остаток, срок или статус. История посещений не удаляется, а изменение сохранится в журнале.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="subscription-visits-total">Всего занятий</Label>
+                <Input
+                  id="subscription-visits-total"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={subscriptionForm.visits_total}
+                  onChange={(event) => setSubscriptionForm({ ...subscriptionForm, visits_total: event.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="subscription-visits-remaining">Осталось</Label>
+                <Input
+                  id="subscription-visits-remaining"
+                  type="number"
+                  min="0"
+                  max={subscriptionForm.visits_total || undefined}
+                  step="1"
+                  value={subscriptionForm.visits_remaining}
+                  onChange={(event) => setSubscriptionForm({ ...subscriptionForm, visits_remaining: event.target.value })}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="subscription-active">Статус</Label>
+              <Select value={subscriptionForm.is_active} onValueChange={(value) => setSubscriptionForm({ ...subscriptionForm, is_active: value })}>
+                <SelectTrigger id="subscription-active"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="true">Активен</SelectItem>
+                  <SelectItem value="false">Неактивен</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">Для активации должен быть положительный остаток и неистёкший срок.</p>
+            </div>
             <div className="space-y-2">
               <Label htmlFor="subscription-sale-date">Дата продажи</Label>
               <Input id="subscription-sale-date" type="date" value={subscriptionForm.sale_date} onChange={(event) => setSubscriptionForm({ ...subscriptionForm, sale_date: event.target.value })} />
@@ -730,10 +799,48 @@ export default function ClientDetail() {
               <Input id="subscription-end-date" type="date" value={subscriptionForm.end_date} onChange={(event) => setSubscriptionForm({ ...subscriptionForm, end_date: event.target.value })} />
               <p className="text-xs text-muted-foreground">Для уважительного переноса укажи новую крайнюю дату вручную.</p>
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="subscription-adjustment-reason">Причина корректировки</Label>
+              <Textarea
+                id="subscription-adjustment-reason"
+                value={subscriptionForm.reason}
+                onChange={(event) => setSubscriptionForm({ ...subscriptionForm, reason: event.target.value })}
+                placeholder="Например: разрешён повторный перенос пробного занятия"
+                rows={3}
+              />
+              <p className="text-xs text-muted-foreground">Обязательное поле. Причина останется в журнале изменений.</p>
+            </div>
+            {subscriptionAdjustments.length > 0 && (
+              <div className="rounded-lg border bg-muted/25 p-3">
+                <div className="mb-2 text-sm font-medium">Последние корректировки</div>
+                <div className="max-h-32 space-y-2 overflow-y-auto">
+                  {subscriptionAdjustments.map((entry: any) => (
+                    <div key={entry.id} className="text-xs text-muted-foreground">
+                      <span className="font-medium text-foreground">{format(parseISO(entry.changed_at), "dd.MM.yyyy HH:mm")}</span>
+                      {" · "}{entry.reason}
+                      {entry.old_data?.visits_remaining !== entry.new_data?.visits_remaining && (
+                        <span>{` · остаток ${entry.old_data?.visits_remaining} → ${entry.new_data?.visits_remaining}`}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setSelectedSubscription(null)} disabled={updateSubscriptionMutation.isPending}>Отмена</Button>
-            <Button onClick={() => updateSubscriptionMutation.mutate()} disabled={!subscriptionForm.sale_date || updateSubscriptionMutation.isPending}>
+            <Button
+              onClick={() => updateSubscriptionMutation.mutate()}
+              disabled={
+                !subscriptionForm.sale_date ||
+                subscriptionForm.reason.trim().length < 3 ||
+                !Number.isInteger(Number(subscriptionForm.visits_total)) ||
+                !Number.isInteger(Number(subscriptionForm.visits_remaining)) ||
+                Number(subscriptionForm.visits_remaining) < 0 ||
+                Number(subscriptionForm.visits_remaining) > Number(subscriptionForm.visits_total) ||
+                updateSubscriptionMutation.isPending
+              }
+            >
               {updateSubscriptionMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Сохранить
             </Button>

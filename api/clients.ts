@@ -26,7 +26,8 @@ async function requireStaff(req: VercelRequest) {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
-    if (!await requireStaff(req)) return res.status(403).json({ error: "Доступ только сотрудникам студии" });
+    const staffUser = await requireStaff(req);
+    if (!staffUser) return res.status(403).json({ error: "Доступ только сотрудникам студии" });
     if (req.body?.action === "reset-client-access") {
       const clientId = String(req.body?.clientId || "");
       if (!clientId) return res.status(400).json({ error: "Клиент не указан" });
@@ -75,6 +76,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const saleDate = String(req.body?.saleDate || "");
       const activationDate = req.body?.activationDate ? String(req.body.activationDate) : null;
       const endDate = req.body?.endDate ? String(req.body.endDate) : null;
+      const visitsTotal = Number(req.body?.visitsTotal);
+      const visitsRemaining = Number(req.body?.visitsRemaining);
+      const requestedActive = req.body?.isActive === true;
+      const reason = String(req.body?.reason || "").trim();
       const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 
       if (!subscriptionId) return res.status(400).json({ error: "Абонемент не указан" });
@@ -84,37 +89,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (activationDate && endDate && endDate < activationDate) {
         return res.status(400).json({ error: "Дата окончания не может быть раньше активации" });
       }
+      if (!Number.isInteger(visitsTotal) || visitsTotal < 0) return res.status(400).json({ error: "Укажи корректное общее количество занятий" });
+      if (!Number.isInteger(visitsRemaining) || visitsRemaining < 0 || visitsRemaining > visitsTotal) {
+        return res.status(400).json({ error: "Остаток должен быть от нуля до общего количества занятий" });
+      }
+      if (reason.length < 3) return res.status(400).json({ error: "Укажи причину корректировки" });
 
-      const { data: subscription, error: subscriptionError } = await adminClient!
-        .from("user_subscriptions")
-        .select("id,visits_total,visits_remaining")
-        .eq("id", subscriptionId)
-        .single();
-      if (subscriptionError || !subscription) throw subscriptionError || new Error("Абонемент не найден");
-
-      const today = new Intl.DateTimeFormat("en-CA", {
-        timeZone: "Asia/Almaty", year: "numeric", month: "2-digit", day: "2-digit",
-      }).format(new Date());
-      const hasVisits = subscription.visits_total == null || Number(subscription.visits_remaining) > 0;
-      const isActive = hasVisits && (!endDate || endDate >= today);
-      const { data: updated, error: updateError } = await adminClient!
-        .from("user_subscriptions")
-        .update({
-          start_date: saleDate,
-          activation_date: activationDate,
-          end_date: endDate,
-          is_active: isActive,
-        })
-        .eq("id", subscriptionId)
-        .select("id,start_date,activation_date,end_date,is_active")
-        .single();
-      if (updateError) throw updateError;
-
-      const { error: cashDateError } = await adminClient!.rpc("sync_subscription_sale_date", {
+      const { data: updated, error: updateError } = await adminClient!.rpc("adjust_client_subscription", {
         p_subscription_id: subscriptionId,
         p_sale_date: saleDate,
+        p_activation_date: activationDate,
+        p_end_date: endDate,
+        p_visits_total: visitsTotal,
+        p_visits_remaining: visitsRemaining,
+        p_is_active: requestedActive,
+        p_reason: reason,
+        p_changed_by: staffUser.id,
       });
-      if (cashDateError) throw cashDateError;
+      if (updateError) throw updateError;
 
       return res.status(200).json(updated);
     }
