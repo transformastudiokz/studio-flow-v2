@@ -19,6 +19,19 @@ type ClientAccountInput = {
   leadStatus?: string;
 };
 
+async function findAuthUserByEmail(admin: SupabaseClient, email: string) {
+  const perPage = 1000;
+  for (let page = 1; page <= 20; page += 1) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
+    if (error) throw error;
+    const users = data.users || [];
+    const match = users.find((user) => user.email?.toLowerCase() === email.toLowerCase());
+    if (match) return match;
+    if (users.length < perPage) return null;
+  }
+  throw new Error("Не удалось проверить существующие учётные записи клиентов");
+}
+
 export async function ensureClientAccount(admin: SupabaseClient, input: ClientAccountInput) {
   const phone = normalizeClientPhone(input.phone);
   const firstName = input.firstName.trim();
@@ -76,6 +89,50 @@ export async function ensureClientAccount(admin: SupabaseClient, input: ClientAc
 
   const email = clientAuthEmail(phone);
   const temporaryPassword = clientTemporaryPassword(phone);
+
+  // An auth account can survive an interrupted or historical import while its
+  // public profile is missing. Creating it again would fail with "already
+  // registered" and leave the client inaccessible. Repair the missing profile
+  // in place, preserving the stable user id used by related history.
+  const orphanedAuthUser = await findAuthUserByEmail(admin, email);
+  if (orphanedAuthUser) {
+    const { error: updateAuthError } = await admin.auth.admin.updateUserById(orphanedAuthUser.id, {
+      email,
+      email_confirm: true,
+      password: temporaryPassword,
+      user_metadata: {
+        ...orphanedAuthUser.user_metadata,
+        first_name: firstName,
+        last_name: lastName,
+        phone,
+        role: "client",
+      },
+    });
+    if (updateAuthError) throw updateAuthError;
+
+    const { error: profileError } = await admin.from("profiles").upsert({
+      id: orphanedAuthUser.id,
+      first_name: firstName,
+      last_name: lastName || null,
+      phone,
+      email: contactEmail || email,
+      role: "client",
+      is_active: true,
+      ...(input.notes !== undefined ? { notes: input.notes } : {}),
+      ...(input.leadStatus !== undefined ? { lead_status: input.leadStatus } : {}),
+    });
+    if (profileError) throw profileError;
+
+    return {
+      id: orphanedAuthUser.id,
+      phone,
+      login: phone,
+      created: true,
+      repaired: true,
+      temporaryPassword,
+    };
+  }
+
   const { data: created, error: createError } = await admin.auth.admin.createUser({
     email,
     password: temporaryPassword,
