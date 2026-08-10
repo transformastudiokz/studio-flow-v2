@@ -110,6 +110,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .single();
       if (updateError) throw updateError;
 
+      const { error: cashDateError } = await adminClient!.rpc("sync_subscription_sale_date", {
+        p_subscription_id: subscriptionId,
+        p_sale_date: saleDate,
+      });
+      if (cashDateError) throw cashDateError;
+
       return res.status(200).json(updated);
     }
 

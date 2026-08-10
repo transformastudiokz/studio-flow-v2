@@ -42,7 +42,7 @@ const Subscriptions = () => {
   const [sellForm, setSellForm] = useState({ 
     user_id: "", 
     plan_id: "", 
-    activation_date: format(new Date(), 'yyyy-MM-dd') // По умолчанию сегодня
+    sale_date: format(new Date(), 'yyyy-MM-dd')
   });
   
   const [editForm, setEditForm] = useState<any>({});
@@ -99,7 +99,7 @@ const Subscriptions = () => {
       const selectedPlan = plans.find((p: any) => p.id === sellForm.plan_id);
       if (!selectedPlan) throw new Error("Тариф не найден");
 
-      // start_date = дата покупки (сегодня)
+      // start_date = выбранная дата продажи; эта же дата попадёт в кассу
       // activation_date = NULL (проставится автоматически при первом посещении)
       // end_date = NULL (рассчитается триггером при активации)
       const { error } = await supabase.from('user_subscriptions').insert([{
@@ -107,7 +107,7 @@ const Subscriptions = () => {
         plan_id: selectedPlan.id,
         visits_total: selectedPlan.visits_count,
         visits_remaining: selectedPlan.visits_count,
-        start_date: format(new Date(), 'yyyy-MM-dd'),
+        start_date: sellForm.sale_date,
         activation_date: null,
         end_date: null,
         is_active: true
@@ -118,8 +118,9 @@ const Subscriptions = () => {
     onSuccess: () => {
       toast.success("Абонемент выдан");
       setIsSellDialogOpen(false);
-      setSellForm({ user_id: "", plan_id: "", activation_date: format(new Date(), 'yyyy-MM-dd') });
+      setSellForm({ user_id: "", plan_id: "", sale_date: format(new Date(), 'yyyy-MM-dd') });
       queryClient.invalidateQueries({ queryKey: ['user_subscriptions_full'] });
+      queryClient.invalidateQueries({ queryKey: ['cash-transactions'] });
     },
     onError: (err: any) => toast.error("Ошибка: " + err.message)
   });
@@ -325,7 +326,7 @@ const Subscriptions = () => {
           <DialogContent className="overflow-visible"> 
             <DialogHeader>
                 <DialogTitle>Новая продажа</DialogTitle>
-                <DialogDescription>Выберите клиента, тариф и дату активации.</DialogDescription>
+                <DialogDescription>Выберите клиента, тариф и дату продажи.</DialogDescription>
             </DialogHeader>
             <div className="py-4 space-y-4">
                 
@@ -393,12 +394,21 @@ const Subscriptions = () => {
                     </Select>
                 </div>
 
-                <div className="rounded-lg bg-blue-50 border border-blue-200 px-3 py-2 text-xs text-blue-700">
-                    Дата покупки — сегодня. Таймер начнётся автоматически при первом посещении клиента.
+                <div className="space-y-2">
+                    <Label htmlFor="subscription-sale-date">Дата продажи</Label>
+                    <Input
+                      id="subscription-sale-date"
+                      type="date"
+                      value={sellForm.sale_date}
+                      onChange={e => setSellForm({...sellForm, sale_date: e.target.value})}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Абонемент и поступление в кассе будут отражены этой датой. Срок начнётся при первом посещении.
+                    </p>
                 </div>
             </div>
             <DialogFooter>
-                <Button onClick={() => sellMutation.mutate()} disabled={sellMutation.isPending}>
+                <Button onClick={() => sellMutation.mutate()} disabled={!sellForm.sale_date || sellMutation.isPending}>
                     {sellMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Выдать
                 </Button>
             </DialogFooter>

@@ -29,6 +29,7 @@ export default function ClientDetail() {
   const [selectedSubscription, setSelectedSubscription] = useState<any>(null);
   const [subscriptionForm, setSubscriptionForm] = useState({ sale_date: "", activation_date: "", end_date: "" });
   const [selectedPlanId, setSelectedPlanId] = useState("");
+  const [saleDate, setSaleDate] = useState(() => format(new Date(), "yyyy-MM-dd"));
   const [editForm, setEditForm] = useState({
     first_name: "",
     last_name: "",
@@ -331,14 +332,12 @@ export default function ClientDetail() {
       const plan = plans.find((p: any) => p.id === selectedPlanId);
       if (!plan) throw new Error("План не найден");
 
-      const startDate = new Date();
-
       const { error } = await supabase.from('user_subscriptions').insert({
         user_id: id,
         plan_id: plan.id,
         visits_remaining: plan.visits_count,
         visits_total: plan.visits_count,
-        start_date: format(startDate, 'yyyy-MM-dd'),
+        start_date: saleDate,
         activation_date: null,
         end_date: null,
         is_active: true
@@ -348,7 +347,10 @@ export default function ClientDetail() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['client_subscriptions'] });
+      queryClient.invalidateQueries({ queryKey: ['cash-transactions'] });
       setIsSellModalOpen(false);
+      setSelectedPlanId("");
+      setSaleDate(format(new Date(), "yyyy-MM-dd"));
       toast({ title: "Успешно", description: "Абонемент добавлен клиенту" });
     },
     onError: (error: any) => {
@@ -540,10 +542,22 @@ export default function ClientDetail() {
                         </SelectContent>
                       </Select>
                     </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="client-subscription-sale-date">Дата продажи</Label>
+                      <Input
+                        id="client-subscription-sale-date"
+                        type="date"
+                        value={saleDate}
+                        onChange={(event) => setSaleDate(event.target.value)}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Абонемент и поступление в кассе будут отражены этой датой.
+                      </p>
+                    </div>
                     <Button 
                       className="w-full" 
                       onClick={() => sellMutation.mutate()}
-                      disabled={!selectedPlanId || sellMutation.isPending}
+                      disabled={!selectedPlanId || !saleDate || sellMutation.isPending}
                     >
                       {sellMutation.isPending ? "Обработка..." : "Оформить"}
                     </Button>
