@@ -72,7 +72,7 @@ export default function Schedule() {
           coach:coaches(id,name),
           bookings:bookings(id,status,user_id,created_at,user:profiles(id,first_name,last_name,phone,email)),
           onefit_bookings:onefit_bookings(id,client_name,source_status,is_active),
-          rental_booking:rental_bookings(id,renter_id,service_id,agreed_price,rental_status,notes,renter:profiles(id,first_name,last_name,phone,email),financials:rental_booking_financials(paid_amount,debt_amount,payment_status))
+          rental_booking:rental_bookings(id,renter_id,service_id,agreed_price,rental_status,notes,renter:profiles!rental_bookings_renter_id_fkey(id,first_name,last_name,phone,email))
         `)
         .gte("start_time", weekStart.toISOString())
         .lte("start_time", weekEnd.toISOString())
@@ -80,10 +80,35 @@ export default function Schedule() {
       if (error) throw error;
 
       const raw = (data || []) as unknown as ScheduleSession[];
+      const rentalBookingIds = raw.flatMap((item) => {
+        const rental = Array.isArray(item.rental_booking) ? item.rental_booking[0] : item.rental_booking;
+        return rental?.id ? [rental.id] : [];
+      });
+      const financialsByRental = new Map<string, { paid_amount: number; debt_amount: number; payment_status: "paid" | "partial" | "unpaid" }>();
+      if (rentalBookingIds.length > 0) {
+        const { data: financialRows, error: financialError } = await supabase
+          .from("rental_booking_financials")
+          .select("rental_booking_id,paid_amount,debt_amount,payment_status")
+          .in("rental_booking_id", rentalBookingIds);
+        if (financialError) throw financialError;
+        for (const row of financialRows || []) {
+          financialsByRental.set(row.rental_booking_id, {
+            paid_amount: Number(row.paid_amount || 0),
+            debt_amount: Number(row.debt_amount || 0),
+            payment_status: row.payment_status as "paid" | "partial" | "unpaid",
+          });
+        }
+      }
       const userIds = raw.flatMap((item) => item.bookings.map((booking) => booking.user_id)).filter(Boolean);
       const statuses = await fetchClientStatuses(userIds);
-      return raw.map((item) => ({
+      return raw.map((item) => {
+        const rental = Array.isArray(item.rental_booking) ? item.rental_booking[0] : item.rental_booking;
+        const rentalWithFinancials = rental
+          ? { ...rental, financials: financialsByRental.get(rental.id) || { paid_amount: 0, debt_amount: Number(rental.agreed_price || 0), payment_status: "unpaid" as const } }
+          : item.rental_booking;
+        return ({
         ...item,
+        rental_booking: rentalWithFinancials,
         room: normalizeRoom(item.room),
         firstBookingCount: item.bookings.filter((booking) =>
           showsFirstBookingIndicator(booking.status)
@@ -93,7 +118,8 @@ export default function Schedule() {
           showsFirstBookingIndicator(booking.status)
           && getClientStatusForBooking(statuses.get(booking.user_id), booking.id)?.isRepeatBeforeFirstVisit,
         ).length,
-      }));
+      });
+      });
     },
     refetchInterval: 30_000,
     refetchOnWindowFocus: "always",
