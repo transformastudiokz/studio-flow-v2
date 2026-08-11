@@ -20,6 +20,7 @@ import {
   UserRoundPlus,
   WalletCards,
   UsersRound,
+  HandCoins,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
@@ -46,6 +47,7 @@ export const Sidebar = () => {
     { name: "Виды занятий", href: "/class-types", icon: Dumbbell },
     { name: "Абонементы", href: "/subscriptions", icon: CreditCard },
     { name: "Касса", href: "/cash", icon: WalletCards },
+    { name: "Услуги", href: "/services", icon: HandCoins },
     { name: "Виды абонементов", href: "/admin/plans", icon: Tags },
     { name: "Посещаемость", href: "/attendance", icon: ClipboardCheck },
     { name: "Инструкторы", href: "/instructors", icon: UserCog },

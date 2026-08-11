@@ -39,7 +39,7 @@ export function CopyWeekDialog({ open, onOpenChange, sourceWeek, sessions }: Pro
   const queryClient = useQueryClient();
   const [targetDate, setTargetDate] = useState(format(addWeeks(sourceWeek, 1), "yyyy-MM-dd"));
   const [preview, setPreview] = useState<Preview | null>(null);
-  const source = useMemo(() => sessions.filter((session) => session.booking_status !== "cancelled"), [sessions]);
+  const source = useMemo(() => sessions.filter((session) => session.booking_status !== "cancelled" && session.session_kind !== "rental"), [sessions]);
 
   useEffect(() => {
     if (!open) return;
@@ -110,7 +110,7 @@ export function CopyWeekDialog({ open, onOpenChange, sourceWeek, sessions }: Pro
           <div className="rounded-xl bg-muted/30 p-3 text-sm">
             <p className="text-muted-foreground">Исходная неделя</p>
             <p className="font-semibold">{format(startOfWeek(sourceWeek, { weekStartsOn: 1 }), "d MMMM", { locale: ru })} — {format(endOfWeek(sourceWeek, { weekStartsOn: 1 }), "d MMMM yyyy", { locale: ru })}</p>
-            <p className="mt-1 text-xs text-muted-foreground">Будут скопированы только занятия — без клиентов, посещений и оплат.</p>
+            <p className="mt-1 text-xs text-muted-foreground">Будут скопированы только фитнес-занятия — без клиентов, посещений, оплат и аренды.</p>
           </div>
           <div className="grid gap-2"><Label>Неделя назначения</Label><Input type="date" value={targetDate} onChange={(event) => { setTargetDate(event.target.value); setPreview(null); }} /><p className="text-xs text-muted-foreground">{format(targetWeek, "d MMMM", { locale: ru })} — {format(addDays(targetWeek, 6), "d MMMM yyyy", { locale: ru })}</p></div>
           {!preview ? <Button variant="outline" className="w-full" onClick={() => analyze.mutate()} disabled={analyze.isPending}>{analyze.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Copy className="mr-2 h-4 w-4" />}Проверить конфликты</Button> : (

@@ -73,6 +73,29 @@ export default function ClientDetail() {
     }
   });
 
+  const { data: rentals = [] } = useQuery({
+    queryKey: ['client_rentals', id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('rental_bookings')
+        .select('id,agreed_price,rental_status,notes,service:service_catalog(name),session:schedule_sessions(start_time,end_time,room),financials:rental_booking_financials(paid_amount,debt_amount,payment_status),payments:cash_transactions(id,occurred_at,amount,payment_method,operation_type)')
+        .eq('renter_id', id)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const rentalSummary = useMemo(() => rentals.reduce((summary: any, rental: any) => {
+    const financials = Array.isArray(rental.financials) ? rental.financials[0] : rental.financials;
+    if (rental.rental_status !== 'cancelled') {
+      summary.paid += Number(financials?.paid_amount || 0);
+      summary.agreed += Number(rental.agreed_price || 0);
+      summary.debt += Number(financials?.debt_amount || 0);
+    }
+    return summary;
+  }, { agreed: 0, paid: 0, debt: 0 }), [rentals]);
+
   const { data: subscriptionSales = [] } = useQuery({
     queryKey: ['client_subscription_sales', id],
     queryFn: async () => {
@@ -623,6 +646,7 @@ export default function ClientDetail() {
             <TabsList>
               <TabsTrigger value="history">История посещений</TabsTrigger>
               <TabsTrigger value="subscriptions">Абонементы</TabsTrigger>
+              <TabsTrigger value="rentals">Услуги и аренда</TabsTrigger>
               <TabsTrigger value="notes">Заметки</TabsTrigger>
             </TabsList>
             
@@ -726,6 +750,30 @@ export default function ClientDetail() {
                       </button>
                     )})}
                   </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="rentals" className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <Card><CardContent className="p-4"><div className="text-xs text-muted-foreground">Аренд</div><div className="mt-1 text-xl font-bold">{rentals.filter((rental: any) => rental.rental_status !== 'cancelled').length}</div></CardContent></Card>
+                <Card><CardContent className="p-4"><div className="text-xs text-muted-foreground">Оплачено</div><div className="mt-1 text-xl font-bold text-emerald-700">{rentalSummary.paid.toLocaleString('ru-RU')} ₸</div></CardContent></Card>
+                <Card><CardContent className="p-4"><div className="text-xs text-muted-foreground">Долг</div><div className="mt-1 text-xl font-bold text-amber-700">{rentalSummary.debt.toLocaleString('ru-RU')} ₸</div></CardContent></Card>
+              </div>
+              <Card>
+                <CardHeader><CardTitle>История услуг и аренды</CardTitle></CardHeader>
+                <CardContent className="divide-y">
+                  {rentals.map((rental: any) => {
+                    const session = Array.isArray(rental.session) ? rental.session[0] : rental.session;
+                    const service = Array.isArray(rental.service) ? rental.service[0] : rental.service;
+                    const financials = Array.isArray(rental.financials) ? rental.financials[0] : rental.financials;
+                    const paymentStatus = financials?.payment_status || 'unpaid';
+                    return <div key={rental.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
+                      <div><div className="font-medium">{service?.name || 'Аренда зала'}</div><div className="text-sm text-muted-foreground">{session?.start_time ? format(parseISO(session.start_time), 'dd.MM.yyyy · HH:mm') : 'Дата не указана'} · {session?.room}</div><div className="mt-1 text-xs text-muted-foreground">Стоимость {Number(rental.agreed_price).toLocaleString('ru-RU')} ₸ · оплачено {Number(financials?.paid_amount || 0).toLocaleString('ru-RU')} ₸</div></div>
+                      <div className={paymentStatus === 'paid' ? 'text-sm font-semibold text-emerald-700' : paymentStatus === 'partial' ? 'text-sm font-semibold text-amber-700' : 'text-sm font-semibold text-red-700'}>{paymentStatus === 'paid' ? 'Оплачено' : paymentStatus === 'partial' ? `Долг ${Number(financials?.debt_amount || 0).toLocaleString('ru-RU')} ₸` : 'Не оплачено'}</div>
+                    </div>;
+                  })}
+                  {rentals.length === 0 ? <div className="py-8 text-center text-muted-foreground">Аренд пока нет</div> : null}
                 </CardContent>
               </Card>
             </TabsContent>

@@ -91,7 +91,7 @@ const Dashboard = () => {
           .lte("start_time", endIso),
         supabase
           .from("cash_transactions")
-          .select("amount,operation_type,title")
+          .select("amount,operation_type,title,subscription_id,rental_booking_id")
           .gte("occurred_at", startIso)
           .lte("occurred_at", endIso),
         supabase
@@ -135,7 +135,7 @@ const Dashboard = () => {
         .filter((row: any) => isTrialName(row.title))
         .reduce((sum: number, row: any) => sum + Number(row.amount || 0), 0);
       const membershipSales = positiveSales
-        .filter((row: any) => row.operation_type === "sale" && !isTrialName(row.title))
+        .filter((row: any) => row.operation_type === "sale" && row.subscription_id && !isTrialName(row.title))
         .reduce((sum: number, row: any) => sum + Number(row.amount || 0), 0);
       const otherSales = positiveSales.reduce((sum: number, row: any) => sum + Number(row.amount || 0), 0)
         - trialSales

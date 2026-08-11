@@ -17,6 +17,12 @@ type Props = {
 };
 
 export function ScheduleSessionCard({ session, compact = false, hasConflict = false, weekCard = false, onOpen }: Props) {
+  const isRental = session.session_kind === "rental";
+  const rental: any = Array.isArray(session.rental_booking) ? session.rental_booking[0] : session.rental_booking;
+  const financials: any = Array.isArray(rental?.financials) ? rental.financials[0] : rental?.financials;
+  const rentalStatus = financials?.payment_status || "unpaid";
+  const renterName = rental?.renter ? `${rental.renter.first_name || ""} ${(rental.renter.last_name || "").slice(0, 1)}.`.trim() : "Арендатор не выбран";
+  const paymentText = rentalStatus === "paid" ? "Оплачено" : rentalStatus === "partial" ? `Долг ${Number(financials?.debt_amount || 0).toLocaleString("ru-RU")} ₸` : "Не оплачено";
   const booked = sessionBookingCount(session);
   const isFull = booked >= session.capacity;
   const isCancelled = session.booking_status === "cancelled";
@@ -26,7 +32,7 @@ export function ScheduleSessionCard({ session, compact = false, hasConflict = fa
   const title = [
     `${format(parseISO(session.start_time), "HH:mm")}–${format(parseISO(session.end_time), "HH:mm")}`,
     session.class_type?.name || "Занятие",
-    session.coach?.name || "Без тренера",
+    isRental ? renterName : session.coach?.name || "Без тренера",
     room,
     `${booked}/${session.capacity} мест`,
     session.booking_closed_reason || "",
@@ -66,16 +72,14 @@ export function ScheduleSessionCard({ session, compact = false, hasConflict = fa
                 <Star className="h-2.5 w-2.5 fill-slate-300 text-slate-400" />{session.repeatBookingCount}
               </span>
             ) : null}
-            <span className={cn("inline-flex shrink-0 items-center text-[9px] font-bold tabular-nums", isFull ? "text-red-700" : booked / Math.max(session.capacity, 1) >= 0.75 ? "text-amber-700" : "text-emerald-700")} title={`${booked} из ${session.capacity} мест занято`}>
-              {booked}/{session.capacity}
-            </span>
+            {isRental ? <span className={cn("inline-flex items-center gap-1 text-[9px] font-semibold", rentalStatus === "paid" ? "text-emerald-700" : rentalStatus === "partial" ? "text-amber-700" : "text-red-700")}><span className={cn("h-1.5 w-1.5 rounded-full", rentalStatus === "paid" ? "bg-emerald-500" : rentalStatus === "partial" ? "bg-amber-500" : "bg-red-500")} />{paymentText}</span> : <span className={cn("inline-flex shrink-0 items-center text-[9px] font-bold tabular-nums", isFull ? "text-red-700" : booked / Math.max(session.capacity, 1) >= 0.75 ? "text-amber-700" : "text-emerald-700")} title={`${booked} из ${session.capacity} мест занято`}>{booked}/{session.capacity}</span>}
           </span>
         </div>
         <div className="h-4 truncate text-[11px] font-semibold leading-4 text-foreground">
           {session.class_type?.name || "Занятие"}
         </div>
         <div className="flex h-3.5 min-w-0 items-center text-[9px] leading-3.5 text-muted-foreground">
-          <span className="min-w-0 truncate" title={session.coach?.name || "Без тренера"}>{formatCoachShortName(session.coach?.name)}</span>
+          <span className="min-w-0 truncate" title={isRental ? renterName : session.coach?.name || "Без тренера"}>{isRental ? renterName : formatCoachShortName(session.coach?.name)}</span>
           <span className="mx-1 shrink-0">•</span>
           <span className="shrink-0">{room}</span>
         </div>
@@ -112,8 +116,8 @@ export function ScheduleSessionCard({ session, compact = false, hasConflict = fa
       </div>
       {!compact ? (
         <>
-          <div className={cn("mt-1 pl-1 text-muted-foreground", weekCard ? "truncate text-[10px] leading-tight" : "truncate text-[10px]")} title={session.coach?.name || "Без тренера"}>
-            {session.coach?.name || "Без тренера"}
+          <div className={cn("mt-1 pl-1 text-muted-foreground", weekCard ? "truncate text-[10px] leading-tight" : "truncate text-[10px]")} title={isRental ? renterName : session.coach?.name || "Без тренера"}>
+            {isRental ? renterName : session.coach?.name || "Без тренера"}
           </div>
           {!weekCard ? <div className="truncate pl-1 text-[10px] text-muted-foreground">{room}</div> : null}
         </>
@@ -137,7 +141,7 @@ export function ScheduleSessionCard({ session, compact = false, hasConflict = fa
             </span>
           ) : null}
         </span>
-        <span
+        {isRental ? <span className={cn("inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-semibold", rentalStatus === "paid" ? "bg-emerald-50 text-emerald-700" : rentalStatus === "partial" ? "bg-amber-50 text-amber-700" : "bg-red-50 text-red-700")}><span className={cn("h-1.5 w-1.5 rounded-full", rentalStatus === "paid" ? "bg-emerald-500" : rentalStatus === "partial" ? "bg-amber-500" : "bg-red-500")} />{paymentText}</span> : <span
           className={cn(
             "inline-flex shrink-0 items-center gap-0.5 rounded-full px-1 py-0.5 text-[9px] font-bold tabular-nums",
             isFull ? "bg-red-100 text-red-700" : booked / Math.max(session.capacity, 1) >= 0.75 ? "bg-amber-100 text-amber-700" : "bg-emerald-50 text-emerald-700",
@@ -145,7 +149,7 @@ export function ScheduleSessionCard({ session, compact = false, hasConflict = fa
           title={isFull ? "Мест нет" : `${booked} из ${session.capacity} мест занято`}
         >
           <Users className="h-2.5 w-2.5" /> {booked}/{session.capacity}
-        </span>
+        </span>}
       </div>
       {!compact && !weekCard && (isClosed || isCancelled) && session.booking_closed_reason ? (
         <div className={cn("mt-1 line-clamp-1 pl-1 text-[9px]", isCancelled ? "text-red-700" : "text-slate-600")}>

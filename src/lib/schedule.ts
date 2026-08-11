@@ -40,12 +40,23 @@ export type ScheduleSession = {
   booking_closed_reason: string | null;
   is_client_visible?: boolean | null;
   is_cancelled?: boolean | null;
+  session_kind?: "fitness" | "rental";
   class_type: { id: string; name: string; color: string | null; duration_min?: number | null } | null;
   coach: { id: string; name: string } | null;
   bookings: ScheduleBooking[];
   onefit_bookings?: Array<{ id: string; client_name: string; source_status: string; is_active: boolean }>;
   firstBookingCount?: number;
   repeatBookingCount?: number;
+  rental_booking?: {
+    id: string;
+    renter_id: string;
+    service_id: string;
+    agreed_price: number;
+    rental_status: string;
+    notes: string | null;
+    renter?: ScheduleClient | null;
+    financials?: Array<{ paid_amount: number; debt_amount: number; payment_status: "paid" | "partial" | "unpaid" }>;
+  } | null;
 };
 
 export const normalizeRoom = (room?: string | null): StudioRoom =>

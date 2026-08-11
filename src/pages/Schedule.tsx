@@ -67,11 +67,12 @@ export default function Schedule() {
         .from("schedule_sessions")
         .select(`
           id, class_type_id, coach_id, start_time, end_time, capacity, room,
-          booking_status, booking_closed_reason, is_cancelled, is_client_visible,
+          booking_status, booking_closed_reason, is_cancelled, is_client_visible, session_kind,
           class_type:class_types(id,name,color,duration_min),
           coach:coaches(id,name),
           bookings:bookings(id,status,user_id,created_at,user:profiles(id,first_name,last_name,phone,email)),
-          onefit_bookings:onefit_bookings(id,client_name,source_status,is_active)
+          onefit_bookings:onefit_bookings(id,client_name,source_status,is_active),
+          rental_booking:rental_bookings(id,renter_id,service_id,agreed_price,rental_status,notes,renter:profiles(id,first_name,last_name,phone,email),financials:rental_booking_financials(paid_amount,debt_amount,payment_status))
         `)
         .gte("start_time", weekStart.toISOString())
         .lte("start_time", weekEnd.toISOString())
@@ -170,6 +171,10 @@ export default function Schedule() {
   }), [classFilter, coachFilter, roomFilter, sessions]);
 
   const openSession = (session: ScheduleSession) => {
+    if (session.session_kind === "rental") {
+      openEditor(session);
+      return;
+    }
     setSelectedSession(session);
     setParticipantsOpen(true);
   };

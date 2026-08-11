@@ -34,6 +34,7 @@ import ClassTypes from "./pages/ClassTypes";
 import Aggregators from "./pages/Aggregators";
 import News from "./pages/News";
 import Cash from "./pages/Cash";
+import Services from "./pages/Services";
 import Staff from "./pages/Staff";
 import ChangePassword from "./pages/ChangePassword";
 import NotFound from "./pages/NotFound";
@@ -248,6 +249,7 @@ const App = () => (
             <Route path="/schedule" element={<Schedule />} />
             <Route path="/subscriptions" element={<Subscriptions />} />
             <Route path="/cash" element={<Cash />} />
+            <Route path="/services" element={<Services />} />
             <Route path="/staff" element={<Staff />} />
             <Route path="/attendance" element={<Attendance />} />
             <Route path="/instructors" element={<Instructors />} />
