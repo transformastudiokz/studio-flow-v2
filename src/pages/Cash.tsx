@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { formatResponsibleShortName } from "@/lib/person-name";
+import { excludeTechnicalCorrectionPairs } from "@/lib/cash-ledger";
 import { toast } from "sonner";
 
 const labels: Record<string, string> = { sale: "Продажа", upgrade: "Замена абонемента", refund: "Возврат", correction: "Корректировка", manual: "Операция", rental_payment: "Аренда", rental_refund: "Возврат аренды" };
@@ -47,7 +48,14 @@ export default function Cash() {
     queryFn: async () => {
       const { data, error } = await supabase.from("cash_transactions").select(`id, occurred_at, operation_type, title, amount, notes, payment_method, rental_booking_id, related_transaction_id, client_id, subscription_id, client:profiles!cash_transactions_client_id_fkey(first_name,last_name,phone,email), responsible:profiles!cash_transactions_responsible_user_id_fkey(first_name,last_name), comments:cash_transaction_comments(id,comment,created_at,author:profiles!cash_transaction_comments_author_user_id_fkey(first_name,last_name))`).gte("occurred_at", startOfDay(new Date(`${from}T00:00:00`)).toISOString()).lte("occurred_at", endOfDay(new Date(`${to}T00:00:00`)).toISOString()).order("occurred_at", { ascending: false });
       if (error) throw error;
-      return data || [];
+      const { data: correctionReversals, error: correctionError } = await supabase
+        .from("cash_transactions")
+        .select("id,operation_type,notes,related_transaction_id")
+        .eq("operation_type", "rental_refund")
+        .not("related_transaction_id", "is", null)
+        .ilike("notes", "Сторно перед корректировкой:%");
+      if (correctionError) throw correctionError;
+      return excludeTechnicalCorrectionPairs(data || [], correctionReversals || []);
     },
   });
   const totals = useMemo(() => data.reduce((acc: { income: number; refunds: number }, row: any) => {
