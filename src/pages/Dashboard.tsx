@@ -159,14 +159,8 @@ const Dashboard = () => {
       if (staffResult.error) throw staffResult.error;
 
       const cashRows = cashResult.data || [];
-      const relatedIds = [...new Set(cashRows.map((row: any) => row.related_transaction_id).filter(Boolean))] as string[];
-      const relatedSales = relatedIds.length
-        ? await supabase.from("cash_transactions").select("id,responsible_user_id").in("id", relatedIds)
-        : { data: [], error: null };
-      if (relatedSales.error) throw relatedSales.error;
       const sessions = (sessionsResult.data || []).filter((session: any) => session.session_kind !== "rental");
       const subscriptions = subscriptionsResult.data || [];
-      const subscriptionSeller = new Map(subscriptions.map((subscription: any) => [subscription.id, subscription.sale_responsible_user_id]));
       const absentBookings: any[] = [];
       const allBookings = sessions.flatMap((session: any) => (session.bookings || []).map((booking: any) => ({ ...booking, session })));
       allBookings.forEach((booking: any) => {
@@ -174,7 +168,6 @@ const Dashboard = () => {
       });
 
       const saleTransactions = cashRows.filter((row: any) => row.operation_type === "sale" && Number(row.amount) > 0);
-      const saleById = new Map([...saleTransactions, ...(relatedSales.data || [])].map((row: any) => [row.id, row]));
       const subscriptionNet = new Map<string, number>();
       cashRows.forEach((row: any) => {
         if (!row.subscription_id) return;
@@ -259,8 +252,10 @@ const Dashboard = () => {
       const trialClientsByAdmin = new Map<string, Set<string>>();
       const membershipClientsByAdmin = new Map<string, Set<string>>();
       cashRows.forEach((row: any) => {
-        const original = row.related_transaction_id ? saleById.get(row.related_transaction_id) : null;
-        const responsibleId = (row.subscription_id ? subscriptionSeller.get(row.subscription_id) : null) || original?.responsible_user_id || row.responsible_user_id;
+        // Revenue belongs to the employee who actually accepted this payment.
+        // A later instalment must not be credited to the employee who created
+        // the subscription, otherwise the cash desk and team ranking diverge.
+        const responsibleId = row.responsible_user_id;
         if (!responsibleId || !adminMap.has(responsibleId)) return;
         adminMap.get(responsibleId)!.revenue += Number(row.amount || 0);
       });
