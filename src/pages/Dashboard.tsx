@@ -149,7 +149,7 @@ const Dashboard = () => {
           .gte("source_date", format(monthStart, "yyyy-MM-dd"))
           .lte("source_date", format(monthEnd, "yyyy-MM-dd"))
           .eq("is_active", true).limit(5000),
-        supabase.from("profiles").select("id,first_name,last_name,role,is_active").in("role", ["admin", "owner"]).eq("is_active", true).limit(5000),
+        supabase.from("profiles").select("id,first_name,last_name,role,is_active").eq("role", "admin").eq("is_active", true).limit(5000),
       ]);
 
       if (cashResult.error) throw cashResult.error;
@@ -419,7 +419,6 @@ const Dashboard = () => {
                   <td className="px-3 py-2.5 font-medium">{admin.name}</td><td className="px-3 py-2.5 text-right tabular-nums">{admin.trialSales}</td><td className="px-3 py-2.5 text-right tabular-nums">{admin.trialAttended}</td><td className="px-3 py-2.5 text-right font-semibold tabular-nums">{admin.memberships}</td><td className="px-4 py-2.5 text-right font-semibold tabular-nums">{money(admin.revenue)}</td>
                 </tr>
               ))}
-              {metrics.unattributedRevenue !== 0 && <tr className="bg-muted/20 text-muted-foreground"><td className="px-4 py-2.5">—</td><td className="px-3 py-2.5">Без ответственного / импорт</td><td colSpan={3} /><td className="px-4 py-2.5 text-right font-medium tabular-nums">{money(metrics.unattributedRevenue)}</td></tr>}
               {!metrics.admins.length && <tr><td colSpan={6} className="p-8 text-center text-muted-foreground">Активные администраторы не найдены</td></tr>}
             </tbody>
           </table>
