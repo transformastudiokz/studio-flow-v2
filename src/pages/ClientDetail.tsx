@@ -38,6 +38,14 @@ export default function ClientDetail() {
   });
   const [selectedPlanId, setSelectedPlanId] = useState("");
   const [saleDate, setSaleDate] = useState(() => format(new Date(), "yyyy-MM-dd"));
+  const [agreedPrice, setAgreedPrice] = useState("");
+  const [initialPayment, setInitialPayment] = useState("");
+  const [salePaymentMethod, setSalePaymentMethod] = useState("kaspi");
+  const [paymentSubscription, setPaymentSubscription] = useState<any>(null);
+  const [paymentAmount, setPaymentAmount] = useState("");
+  const [paymentDate, setPaymentDate] = useState(() => format(new Date(), "yyyy-MM-dd"));
+  const [paymentMethod, setPaymentMethod] = useState("kaspi");
+  const [paymentNote, setPaymentNote] = useState("");
   const [editForm, setEditForm] = useState({
     first_name: "",
     last_name: "",
@@ -101,14 +109,21 @@ export default function ClientDetail() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('cash_transactions')
-        .select('subscription_id,occurred_at,amount')
+        .select('id,subscription_id,occurred_at,amount,operation_type,payment_method,responsible:profiles!cash_transactions_responsible_user_id_fkey(first_name,last_name)')
         .eq('client_id', id)
-        .eq('operation_type', 'sale')
+        .in('operation_type', ['sale','subscription_payment','refund','correction','upgrade'])
         .order('occurred_at', { ascending: true });
       if (error) throw error;
       return data || [];
     }
   });
+
+  const subscriptionFinancials = useMemo(() => subscriptions.map((subscription: any) => {
+    const payments = subscriptionSales.filter((item: any) => item.subscription_id === subscription.id);
+    const agreed = Number(subscription.agreed_price ?? subscription.plan?.price ?? 0);
+    const paid = payments.reduce((sum: number, item: any) => sum + Number(item.amount || 0), 0);
+    return { subscriptionId: subscription.id, agreed, paid, debt: Math.max(agreed - paid, 0), payments };
+  }), [subscriptions, subscriptionSales]);
 
   const { data: subscriptionAdjustments = [] } = useQuery({
     queryKey: ['subscription_adjustments', selectedSubscription?.id],
@@ -404,15 +419,19 @@ export default function ClientDetail() {
       const plan = plans.find((p: any) => p.id === selectedPlanId);
       if (!plan) throw new Error("План не найден");
 
-      const { error } = await supabase.from('user_subscriptions').insert({
-        user_id: id,
-        plan_id: plan.id,
-        visits_remaining: plan.visits_count,
-        visits_total: plan.visits_count,
-        start_date: saleDate,
-        activation_date: null,
-        end_date: null,
-        is_active: true
+      const price = Number(agreedPrice);
+      const payment = Number(initialPayment);
+      if (!Number.isFinite(price) || price < 0) throw new Error("Укажи стоимость абонемента");
+      if (!Number.isFinite(payment) || payment < 0 || payment > price) throw new Error("Первый взнос должен быть от 0 до стоимости");
+      const operationKey = crypto.randomUUID();
+      const { error } = await supabase.rpc('sell_subscription_with_payment', {
+        p_client_id: id,
+        p_plan_id: plan.id,
+        p_sale_date: saleDate,
+        p_agreed_price: price,
+        p_initial_payment: payment,
+        p_payment_method: salePaymentMethod,
+        p_idempotency_key: operationKey,
       });
 
       if (error) throw error;
@@ -422,12 +441,40 @@ export default function ClientDetail() {
       queryClient.invalidateQueries({ queryKey: ['cash-transactions'] });
       setIsSellModalOpen(false);
       setSelectedPlanId("");
+      setAgreedPrice("");
+      setInitialPayment("");
       setSaleDate(format(new Date(), "yyyy-MM-dd"));
       toast({ title: "Успешно", description: "Абонемент добавлен клиенту" });
     },
     onError: (error: any) => {
       toast({ title: "Ошибка", description: error.message, variant: "destructive" });
     }
+  });
+
+  const paymentMutation = useMutation({
+    mutationFn: async () => {
+      const amount = Number(paymentAmount);
+      if (!paymentSubscription || !Number.isFinite(amount) || amount <= 0) throw new Error("Укажи сумму доплаты");
+      const { error } = await supabase.rpc('record_subscription_payment', {
+        p_subscription_id: paymentSubscription.id,
+        p_amount: amount,
+        p_payment_method: paymentMethod,
+        p_paid_at: new Date(`${paymentDate}T12:00:00+05:00`).toISOString(),
+        p_note: paymentNote.trim() || null,
+        p_idempotency_key: crypto.randomUUID(),
+      });
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['client_subscriptions', id] });
+      await queryClient.invalidateQueries({ queryKey: ['client_subscription_sales', id] });
+      await queryClient.invalidateQueries({ queryKey: ['cash-transactions'] });
+      setPaymentSubscription(null);
+      setPaymentAmount("");
+      setPaymentNote("");
+      toast({ title: "Доплата принята", description: "Касса и остаток долга обновлены" });
+    },
+    onError: (error: any) => toast({ title: "Не удалось принять доплату", description: error.message, variant: "destructive" }),
   });
 
 // ... (остальной код в начале файла без изменений)
@@ -601,7 +648,13 @@ export default function ClientDetail() {
                   <div className="space-y-4 py-4">
                     <div className="space-y-2">
                       <Label>Выберите тариф</Label>
-                      <Select onValueChange={setSelectedPlanId}>
+                      <Select onValueChange={(value) => {
+                        setSelectedPlanId(value);
+                        const selected = plans.find((plan: any) => plan.id === value);
+                        const price = String(Number(selected?.price || 0));
+                        setAgreedPrice(price);
+                        setInitialPayment(price);
+                      }}>
                         <SelectTrigger>
                           <SelectValue placeholder="Тарифный план" />
                         </SelectTrigger>
@@ -613,6 +666,26 @@ export default function ClientDetail() {
                           ))}
                         </SelectContent>
                       </Select>
+                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label htmlFor="client-subscription-agreed-price">Стоимость абонемента</Label>
+                        <Input id="client-subscription-agreed-price" type="number" min="0" value={agreedPrice} onChange={(event) => setAgreedPrice(event.target.value)} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="client-subscription-initial-payment">Внесено сейчас</Label>
+                        <Input id="client-subscription-initial-payment" type="number" min="0" max={agreedPrice || undefined} value={initialPayment} onChange={(event) => setInitialPayment(event.target.value)} />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Способ оплаты</Label>
+                      <Select value={salePaymentMethod} onValueChange={setSalePaymentMethod}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="kaspi">Kaspi</SelectItem><SelectItem value="halyk">Halyk</SelectItem><SelectItem value="cash">Наличные</SelectItem><SelectItem value="bank_account">Расчётный счёт</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {Number(agreedPrice || 0) > Number(initialPayment || 0) ? <p className="text-sm font-medium text-amber-700">Долг после оформления: {(Number(agreedPrice || 0) - Number(initialPayment || 0)).toLocaleString('ru-RU')} ₸</p> : null}
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="client-subscription-sale-date">Дата продажи</Label>
@@ -629,7 +702,7 @@ export default function ClientDetail() {
                     <Button 
                       className="w-full" 
                       onClick={() => sellMutation.mutate()}
-                      disabled={!selectedPlanId || !saleDate || sellMutation.isPending}
+                      disabled={!selectedPlanId || !saleDate || agreedPrice === "" || initialPayment === "" || sellMutation.isPending}
                     >
                       {sellMutation.isPending ? "Обработка..." : "Оформить"}
                     </Button>
@@ -717,8 +790,9 @@ export default function ClientDetail() {
                   <div className="divide-y">
                     {subscriptions.map((sub: any) => {
                       const state = getSubscriptionState(sub);
-                      const sale = subscriptionSales.find((item: any) => item.subscription_id === sub.id);
-                      const price = sale?.amount ?? sub.plan?.price;
+                      const sale = subscriptionSales.find((item: any) => item.subscription_id === sub.id && item.operation_type === 'sale');
+                      const financial = subscriptionFinancials.find((item) => item.subscriptionId === sub.id);
+                      const price = financial?.agreed ?? sub.plan?.price;
                       return (
                       <button
                         key={sub.id}
@@ -731,12 +805,17 @@ export default function ClientDetail() {
                           <div className="mt-0.5 text-sm text-muted-foreground">
                             Осталось {sub.visits_remaining} из {sub.visits_total} · {Number(price || 0).toLocaleString('ru-RU')} ₸
                           </div>
+                          <div className={`mt-1 text-xs font-medium ${financial?.debt ? 'text-amber-700' : 'text-emerald-700'}`}>
+                            Оплачено {Number(financial?.paid || 0).toLocaleString('ru-RU')} ₸{financial?.debt ? ` · долг ${financial.debt.toLocaleString('ru-RU')} ₸` : ' · долг отсутствует'}
+                          </div>
+                          {financial?.payments?.length ? <div className="mt-1 text-xs text-muted-foreground">{financial.payments.map((payment: any) => `${format(parseISO(payment.occurred_at), 'dd.MM.yyyy')}: ${Number(payment.amount).toLocaleString('ru-RU')} ₸`).join(' · ')}</div> : null}
                           <div className="mt-0.5 text-xs text-muted-foreground">
                             Куплен {sub.start_date ? format(parseISO(sub.start_date), 'dd.MM.yyyy') : sale?.occurred_at ? format(parseISO(sale.occurred_at), 'dd.MM.yyyy') : format(parseISO(sub.created_at), 'dd.MM.yyyy')}
                             {' · '}Активирован {sub.activation_date ? format(parseISO(sub.activation_date), 'dd.MM.yyyy') : 'не активирован'}
                           </div>
                         </div>
                         <div className="flex items-center gap-3 text-right">
+                          {financial?.debt > 0 ? <Button type="button" size="sm" variant="outline" onClick={(event) => { event.stopPropagation(); setPaymentSubscription(sub); setPaymentAmount(String(financial.debt)); setPaymentDate(format(new Date(), 'yyyy-MM-dd')); }}>Внести доплату</Button> : null}
                           <div>
                           <div className={`text-sm font-medium ${state === 'active' ? 'text-green-600' : state === 'purchased' ? 'text-blue-600' : 'text-gray-500'}`}>
                             {subscriptionStateLabel[state]}
@@ -902,6 +981,23 @@ export default function ClientDetail() {
               Сохранить
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={Boolean(paymentSubscription)} onOpenChange={(open) => !open && setPaymentSubscription(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Внести доплату</DialogTitle>
+            <DialogDescription>{paymentSubscription?.plan?.name}. Платёж появится в кассе выбранной датой.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2"><Label>Сумма</Label><Input type="number" min="1" value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} /></div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2"><Label>Дата оплаты</Label><Input type="date" value={paymentDate} onChange={(event) => setPaymentDate(event.target.value)} /></div>
+              <div className="space-y-2"><Label>Способ оплаты</Label><Select value={paymentMethod} onValueChange={setPaymentMethod}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="kaspi">Kaspi</SelectItem><SelectItem value="halyk">Halyk</SelectItem><SelectItem value="cash">Наличные</SelectItem><SelectItem value="bank_account">Расчётный счёт</SelectItem></SelectContent></Select></div>
+            </div>
+            <div className="space-y-2"><Label>Комментарий</Label><Textarea value={paymentNote} onChange={(event) => setPaymentNote(event.target.value)} placeholder="Необязательно" /></div>
+          </div>
+          <DialogFooter><Button variant="outline" onClick={() => setPaymentSubscription(null)}>Отмена</Button><Button onClick={() => paymentMutation.mutate()} disabled={paymentMutation.isPending || !paymentDate}>{paymentMutation.isPending ? "Сохранение…" : "Принять оплату"}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

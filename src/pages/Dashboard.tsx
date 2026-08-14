@@ -142,7 +142,7 @@ const Dashboard = () => {
           onefit_bookings:onefit_bookings(id,is_active,source_status)
         `).gte("start_time", startIso).lte("start_time", endIso).limit(5000),
         supabase.from("user_subscriptions").select(`
-          id,user_id,visits_total,visits_remaining,end_date,is_active,start_date,
+          id,user_id,visits_total,visits_remaining,end_date,is_active,start_date,sale_responsible_user_id,
           plan:subscription_plans(name,visits_count)
         `).limit(5000),
         supabase.from("onefit_bookings").select("id,session_id,source_date,source_status,is_active")
@@ -166,6 +166,7 @@ const Dashboard = () => {
       if (relatedSales.error) throw relatedSales.error;
       const sessions = (sessionsResult.data || []).filter((session: any) => session.session_kind !== "rental");
       const subscriptions = subscriptionsResult.data || [];
+      const subscriptionSeller = new Map(subscriptions.map((subscription: any) => [subscription.id, subscription.sale_responsible_user_id]));
       const absentBookings: any[] = [];
       const allBookings = sessions.flatMap((session: any) => (session.bookings || []).map((booking: any) => ({ ...booking, session })));
       allBookings.forEach((booking: any) => {
@@ -259,7 +260,7 @@ const Dashboard = () => {
       const membershipClientsByAdmin = new Map<string, Set<string>>();
       cashRows.forEach((row: any) => {
         const original = row.related_transaction_id ? saleById.get(row.related_transaction_id) : null;
-        const responsibleId = original?.responsible_user_id || row.responsible_user_id;
+        const responsibleId = (row.subscription_id ? subscriptionSeller.get(row.subscription_id) : null) || original?.responsible_user_id || row.responsible_user_id;
         if (!responsibleId || !adminMap.has(responsibleId)) return;
         adminMap.get(responsibleId)!.revenue += Number(row.amount || 0);
       });

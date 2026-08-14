@@ -42,7 +42,10 @@ const Subscriptions = () => {
   const [sellForm, setSellForm] = useState({ 
     user_id: "", 
     plan_id: "", 
-    sale_date: format(new Date(), 'yyyy-MM-dd')
+    sale_date: format(new Date(), 'yyyy-MM-dd'),
+    agreed_price: "",
+    initial_payment: "",
+    payment_method: "kaspi",
   });
   
   const [editForm, setEditForm] = useState<any>({});
@@ -102,23 +105,26 @@ const Subscriptions = () => {
       // start_date = выбранная дата продажи; эта же дата попадёт в кассу
       // activation_date = NULL (проставится автоматически при первом посещении)
       // end_date = NULL (рассчитается триггером при активации)
-      const { error } = await supabase.from('user_subscriptions').insert([{
-        user_id: sellForm.user_id,
-        plan_id: selectedPlan.id,
-        visits_total: selectedPlan.visits_count,
-        visits_remaining: selectedPlan.visits_count,
-        start_date: sellForm.sale_date,
-        activation_date: null,
-        end_date: null,
-        is_active: true
-      }]);
+      const agreedPrice = Number(sellForm.agreed_price);
+      const initialPayment = Number(sellForm.initial_payment);
+      if (!Number.isFinite(agreedPrice) || agreedPrice < 0) throw new Error("Укажи стоимость");
+      if (!Number.isFinite(initialPayment) || initialPayment < 0 || initialPayment > agreedPrice) throw new Error("Первый взнос должен быть от 0 до стоимости");
+      const { error } = await supabase.rpc('sell_subscription_with_payment', {
+        p_client_id: sellForm.user_id,
+        p_plan_id: selectedPlan.id,
+        p_sale_date: sellForm.sale_date,
+        p_agreed_price: agreedPrice,
+        p_initial_payment: initialPayment,
+        p_payment_method: sellForm.payment_method,
+        p_idempotency_key: crypto.randomUUID(),
+      });
       
       if (error) throw error;
     },
     onSuccess: () => {
       toast.success("Абонемент выдан");
       setIsSellDialogOpen(false);
-      setSellForm({ user_id: "", plan_id: "", sale_date: format(new Date(), 'yyyy-MM-dd') });
+      setSellForm({ user_id: "", plan_id: "", sale_date: format(new Date(), 'yyyy-MM-dd'), agreed_price: "", initial_payment: "", payment_method: "kaspi" });
       queryClient.invalidateQueries({ queryKey: ['user_subscriptions_full'] });
       queryClient.invalidateQueries({ queryKey: ['cash-transactions'] });
     },
@@ -384,7 +390,7 @@ const Subscriptions = () => {
                 {/* ВЫБОР ТАРИФА */}
                 <div className="space-y-2">
                     <Label>Тариф</Label>
-                    <Select onValueChange={(val) => setSellForm({...sellForm, plan_id: val})}>
+                    <Select onValueChange={(val) => { const plan = plans.find((item: any) => item.id === val); const price = String(Number(plan?.price || 0)); setSellForm({...sellForm, plan_id: val, agreed_price: price, initial_payment: price}); }}>
                         <SelectTrigger><SelectValue placeholder="Выберите тариф..." /></SelectTrigger>
                         <SelectContent>
                             {plans.map((p: any) => (
@@ -393,6 +399,12 @@ const Subscriptions = () => {
                         </SelectContent>
                     </Select>
                 </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2"><Label>Стоимость абонемента</Label><Input type="number" min="0" value={sellForm.agreed_price} onChange={e => setSellForm({...sellForm, agreed_price: e.target.value})} /></div>
+                  <div className="space-y-2"><Label>Внесено сейчас</Label><Input type="number" min="0" max={sellForm.agreed_price || undefined} value={sellForm.initial_payment} onChange={e => setSellForm({...sellForm, initial_payment: e.target.value})} /></div>
+                </div>
+                <div className="space-y-2"><Label>Способ оплаты</Label><Select value={sellForm.payment_method} onValueChange={value => setSellForm({...sellForm, payment_method: value})}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="kaspi">Kaspi</SelectItem><SelectItem value="halyk">Halyk</SelectItem><SelectItem value="cash">Наличные</SelectItem><SelectItem value="bank_account">Расчётный счёт</SelectItem></SelectContent></Select>{Number(sellForm.agreed_price || 0) > Number(sellForm.initial_payment || 0) ? <p className="text-sm font-medium text-amber-700">Долг: {(Number(sellForm.agreed_price || 0)-Number(sellForm.initial_payment || 0)).toLocaleString('ru-RU')} ₸</p> : null}</div>
 
                 <div className="space-y-2">
                     <Label htmlFor="subscription-sale-date">Дата продажи</Label>
@@ -408,7 +420,7 @@ const Subscriptions = () => {
                 </div>
             </div>
             <DialogFooter>
-                <Button onClick={() => sellMutation.mutate()} disabled={!sellForm.sale_date || sellMutation.isPending}>
+                <Button onClick={() => sellMutation.mutate()} disabled={!sellForm.sale_date || !sellForm.plan_id || sellForm.agreed_price === "" || sellForm.initial_payment === "" || sellMutation.isPending}>
                     {sellMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Выдать
                 </Button>
             </DialogFooter>

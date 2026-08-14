@@ -19,7 +19,7 @@ import { formatResponsibleShortName } from "@/lib/person-name";
 import { excludeTechnicalCorrectionPairs } from "@/lib/cash-ledger";
 import { toast } from "sonner";
 
-const labels: Record<string, string> = { sale: "Продажа", upgrade: "Замена абонемента", refund: "Возврат", correction: "Корректировка", manual: "Операция", rental_payment: "Аренда", rental_refund: "Возврат аренды" };
+const labels: Record<string, string> = { sale: "Продажа", subscription_payment: "Доплата", upgrade: "Замена абонемента", refund: "Возврат", correction: "Корректировка", manual: "Операция", rental_payment: "Аренда", rental_refund: "Возврат аренды" };
 const paymentMethods: Record<string, string> = { kaspi: "Kaspi", halyk: "Halyk", cash: "Наличные", bank_account: "Расчётный счёт" };
 const money = (value: number) => new Intl.NumberFormat("ru-RU", { style: "currency", currency: "KZT", maximumFractionDigits: 0 }).format(value);
 
