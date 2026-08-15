@@ -51,7 +51,7 @@ const Subscriptions = () => {
   const [editForm, setEditForm] = useState<any>({});
 
   // 1. Получаем список абонементов
-  const { data: subscriptions = [], isLoading } = useQuery({
+  const { data: subscriptions = [], isLoading, error: subscriptionsError } = useQuery({
     queryKey: ['user_subscriptions_full'],
     queryFn: async () => {
       // ИЗМЕНЕНИЕ: Убрали bookings(status), так как считаем остаток на бэкенде
@@ -59,7 +59,7 @@ const Subscriptions = () => {
         .from('user_subscriptions')
         .select(`
             *, 
-            user:profiles(first_name, last_name, phone), 
+            user:profiles!user_subscriptions_user_id_fkey(first_name, last_name, phone),
             plan:subscription_plans(name, duration_days)
         `)
         .order('created_at', { ascending: false });
@@ -480,7 +480,13 @@ const Subscriptions = () => {
 
       {/* MOBILE CARDS */}
       <div className="md:hidden space-y-3">
-        {filteredSubs.length === 0 ? (
+        {subscriptionsError ? (
+          <div className="text-center py-8 text-destructive text-sm">
+            Не удалось загрузить журнал абонементов. Обновите страницу или повторите позже.
+          </div>
+        ) : isLoading ? (
+          <div className="text-center py-8 text-muted-foreground text-sm">Загрузка...</div>
+        ) : filteredSubs.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground text-sm">Абонементов не найдено</div>
         ) : filteredSubs.map((sub: any) => {
           const status = getSubscriptionStatus(sub);
@@ -510,7 +516,17 @@ const Subscriptions = () => {
       </div>
 
       <div className="hidden md:block overflow-x-auto bg-white rounded-lg border shadow-sm">
-        <DataTable columns={columns} data={filteredSubs} emptyMessage="Абонементов не найдено" />
+        {subscriptionsError ? (
+          <div className="rounded-lg border bg-card py-10 text-center text-sm text-destructive">
+            Не удалось загрузить журнал абонементов. Обновите страницу или повторите позже.
+          </div>
+        ) : isLoading ? (
+          <div className="rounded-lg border bg-card py-10 text-center text-sm text-muted-foreground">
+            Загрузка...
+          </div>
+        ) : (
+          <DataTable columns={columns} data={filteredSubs} emptyMessage="Абонементов не найдено" />
+        )}
       </div>
 
       {/* РЕДАКТИРОВАНИЕ */}

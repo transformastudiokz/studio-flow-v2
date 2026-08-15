@@ -51,14 +51,14 @@ export default function Clients() {
   const [editSub, setEditSub] = useState<any>(null);
   const [editForm, setEditForm] = useState<any>({});
 
-  const { data: clients = [], isLoading } = useQuery({
+  const { data: clients = [], isLoading, error: clientsError } = useQuery({
     queryKey: ['clients_with_subs'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('profiles')
         .select(`
             *,
-            last_sub:user_subscriptions(
+            last_sub:user_subscriptions!user_subscriptions_user_id_fkey(
                 id,
                 end_date,
                 activation_date,
@@ -223,7 +223,11 @@ export default function Clients() {
 
       {/* MOBILE CARDS */}
       <div className="md:hidden space-y-2">
-        {isLoading ? (
+        {clientsError ? (
+          <div className="text-center py-8 text-destructive text-sm">
+            Не удалось загрузить клиентов. Обновите страницу или повторите позже.
+          </div>
+        ) : isLoading ? (
           <div className="text-center py-8 text-muted-foreground text-sm">Загрузка...</div>
         ) : filteredClients.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground text-sm">Клиенты не найдены</div>
@@ -318,7 +322,13 @@ export default function Clients() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {isLoading ? (
+            {clientsError ? (
+              <TableRow>
+                <TableCell colSpan={6} className="text-center py-8 text-destructive">
+                  Не удалось загрузить клиентов. Обновите страницу или повторите позже.
+                </TableCell>
+              </TableRow>
+            ) : isLoading ? (
               <TableRow>
                 <TableCell colSpan={6} className="text-center py-8">Загрузка...</TableCell>
               </TableRow>
