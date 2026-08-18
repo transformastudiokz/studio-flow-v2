@@ -15,7 +15,7 @@ import {
   differenceInMinutes
 } from "date-fns";
 import { ru } from "date-fns/locale";
-import { Loader2, User, Check, Clock, ChevronLeft, ChevronRight, XCircle } from "lucide-react";
+import { Loader2, User, Check, Clock, ChevronLeft, ChevronRight, XCircle, Info } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { occupiesPlace } from "@/lib/schedule";
@@ -78,7 +78,7 @@ const ClientSchedule = () => {
       const { data, error } = await supabase
         .from('schedule_sessions')
         .select(`
-            id, start_time, end_time, capacity, room, booking_status, booking_closed_reason, is_client_visible,
+            id, start_time, end_time, capacity, room, booking_status, booking_closed_reason, public_description, is_client_visible,
             class_type:class_types(name, color, description),
             coach:coaches(name),
             my_booking:bookings(id, user_id, subscription_id, status)
@@ -269,7 +269,7 @@ const ClientSchedule = () => {
                 <Card 
                     key={session.id} 
                     className={cn("client-surface client-focus overflow-hidden border-[#ded9cf] bg-[#fffefb] shadow-[0_5px_18px_rgba(48,58,51,0.07)] transition-shadow hover:shadow-[0_7px_22px_rgba(48,58,51,0.1)]", session.booking_status === 'cancelled' ? "bg-[#ece8df] text-slate-600" : session.booking_status === 'closed' ? "bg-[#f5f3ef]" : "")}
-                    onClick={() => setSelectedClassInfo(session.class_type)} // ОТКРЫВАЕМ ИНФО
+                    onClick={() => setSelectedClassInfo({ ...session.class_type, description: session.public_description || session.class_type?.description })} // ОТКРЫВАЕМ ИНФО
                 >
                   <div className="grid min-w-0 grid-cols-[4.25rem_minmax(0,1fr)] gap-x-3 p-3.5 min-[420px]:grid-cols-[4.75rem_minmax(0,1fr)] min-[420px]:gap-x-4">
                       <div className="flex min-w-0 flex-col items-start">
@@ -285,7 +285,7 @@ const ClientSchedule = () => {
                       </div>
 
                       <div className="min-w-0">
-                        <button type="button" className="client-focus block w-full min-w-0 text-left" onClick={() => setSelectedClassInfo(session.class_type)}>
+                        <button type="button" className="client-focus block w-full min-w-0 text-left" onClick={() => setSelectedClassInfo({ ...session.class_type, description: session.public_description || session.class_type?.description })}>
                           <h3 className="line-clamp-2 break-words text-sm font-bold leading-[1.22] text-[#202721]" title={session.class_type?.name || ""}>
                             {session.class_type?.name}
                           </h3>
@@ -296,6 +296,7 @@ const ClientSchedule = () => {
                         </p>
                         {session.room ? <p className="mt-0.5 truncate text-xs text-[#858880]">{session.room}</p> : null}
                         {session.booking_status !== 'open' && <p className="mt-1 text-[11px] font-semibold text-[#6f706b]">{session.booking_status === 'cancelled' ? "Занятие отменено" : "Запись закрыта"}{session.booking_closed_reason ? ` · ${session.booking_closed_reason}` : ""}</p>}
+                        {/мастер[\s-]*класс/i.test(session.class_type?.name || "") ? <button type="button" className="client-focus mt-2 inline-flex items-center gap-1.5 rounded-lg bg-[#f5efe2] px-2.5 py-1.5 text-[11px] font-semibold text-[#745f3c]" onClick={(event) => { event.stopPropagation(); setSelectedClassInfo({ ...session.class_type, description: session.public_description || session.class_type?.description }); }}><Info className="h-3.5 w-3.5" />Подробнее о мастер-классе</button> : null}
 
                         <div className="mt-3 grid min-w-0 grid-cols-1 gap-2 min-[360px]:grid-cols-[minmax(0,1fr)_auto]" onClick={(e) => e.stopPropagation()}>
                            {/* e.stopPropagation() ВАЖНО: Чтобы клик по кнопке не открывал инфо */}
