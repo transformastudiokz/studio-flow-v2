@@ -51,6 +51,7 @@ const emptyForm = (date: Date) => ({
   paymentMethod: "kaspi",
   paymentDate: format(date, "yyyy-MM-dd"),
   rentalNotes: "",
+  publicDescription: "",
 });
 
 export function SessionEditorDialog({ open, onOpenChange, session, initialDate, classTypes, coaches }: Props) {
@@ -59,6 +60,7 @@ export function SessionEditorDialog({ open, onOpenChange, session, initialDate, 
   const paymentAttemptRef = useRef<{ fingerprint: string; key: string } | null>(null);
   const selectedClassType = classTypes.find((item) => item.id === form.classTypeId);
   const isRental = session?.session_kind === "rental" || /аренд/i.test(selectedClassType?.name || "");
+  const isWorkshop = /мастер[\s-]*класс/i.test(selectedClassType?.name || "");
   const { data: services = [] } = useQuery({ queryKey: ["service_catalog", "active"], enabled: open && isRental, queryFn: async () => { const { data, error } = await supabase.from("service_catalog").select("id,name,room,duration_minutes,list_price").eq("category", "rental").eq("is_active", true).order("room"); if (error) throw error; return data || []; } });
   const { data: renters = [] } = useQuery({ queryKey: ["rental_renters"], enabled: open && isRental, queryFn: async () => { const { data, error } = await supabase.from("profiles").select("id,first_name,last_name,phone").eq("role", "client").eq("is_active", true).order("first_name"); if (error) throw error; return data || []; } });
 
@@ -86,6 +88,7 @@ export function SessionEditorDialog({ open, onOpenChange, session, initialDate, 
       paymentMethod: "kaspi",
       paymentDate: format(new Date(), "yyyy-MM-dd"),
       rentalNotes: session.rental_booking?.notes || "",
+      publicDescription: session.public_description || "",
     });
   }, [initialDate, open, session]);
 
@@ -97,6 +100,8 @@ export function SessionEditorDialog({ open, onOpenChange, session, initialDate, 
       if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) throw new Error("Время окончания должно быть позже начала");
       const capacity = isRental ? 1 : Number.parseInt(form.capacity, 10);
       if (!Number.isFinite(capacity) || capacity < 1) throw new Error("Укажи вместимость");
+      if (isWorkshop && !form.publicDescription.trim()) throw new Error("Добавь короткое описание мастер-класса для клиентов");
+      if (form.publicDescription.trim().length > 500) throw new Error("Описание мастер-класса должно быть не длиннее 500 символов");
       if (isRental && !form.renterId) throw new Error("Выбери арендатора");
       if (isRental && !form.serviceId) throw new Error("Выбери услугу аренды");
       if (isRental && (!Number.isFinite(Number(form.agreedPrice)) || Number(form.agreedPrice) < 0)) throw new Error("Укажи стоимость аренды");
@@ -158,6 +163,7 @@ export function SessionEditorDialog({ open, onOpenChange, session, initialDate, 
         booking_closed_at: form.bookingStatus === "open" ? null : new Date().toISOString(),
         booking_closed_by: form.bookingStatus === "open" ? null : user?.id || null,
         is_client_visible: form.clientVisible,
+        public_description: isWorkshop ? form.publicDescription.trim() : null,
         session_kind: isRental ? "rental" : "fitness",
       };
 
@@ -233,10 +239,12 @@ export function SessionEditorDialog({ open, onOpenChange, session, initialDate, 
   const selectClassType = (classTypeId: string) => {
     const type = classTypes.find((item) => item.id === classTypeId);
     const rentalType = /аренд/i.test(type?.name || "");
-    if (!type?.duration_min) return setForm((current) => ({ ...current, classTypeId, clientVisible: rentalType ? false : current.clientVisible, coachId: rentalType ? "none" : current.coachId }));
+    const individualType = /индивидуальн/i.test(type?.name || "");
+    const workshopType = /мастер[\s-]*класс/i.test(type?.name || "");
+    if (!type?.duration_min) return setForm((current) => ({ ...current, classTypeId, capacity: individualType ? "1" : current.capacity, clientVisible: rentalType ? false : current.clientVisible, coachId: rentalType ? "none" : current.coachId, publicDescription: workshopType ? current.publicDescription : "" }));
     const start = new Date(`${form.date}T${form.startTime}:00`);
     const end = new Date(start.getTime() + type.duration_min * 60_000);
-    setForm((current) => ({ ...current, classTypeId, endTime: format(end, "HH:mm"), clientVisible: rentalType ? false : current.clientVisible, coachId: rentalType ? "none" : current.coachId }));
+    setForm((current) => ({ ...current, classTypeId, endTime: format(end, "HH:mm"), capacity: individualType ? "1" : current.capacity, clientVisible: rentalType ? false : current.clientVisible, coachId: rentalType ? "none" : current.coachId, publicDescription: workshopType ? current.publicDescription : "" }));
   };
 
   const selectService = (serviceId: string) => {
@@ -263,6 +271,7 @@ export function SessionEditorDialog({ open, onOpenChange, session, initialDate, 
             <div className="grid gap-2"><Label>Начало</Label><Input type="time" step="600" value={form.startTime} onChange={(event) => setForm((current) => ({ ...current, startTime: event.target.value }))} /></div>
             <div className="grid gap-2"><Label>Окончание</Label><Input type="time" step="600" value={form.endTime} onChange={(event) => setForm((current) => ({ ...current, endTime: event.target.value }))} /></div>
           </div>
+          {isWorkshop ? <div className="grid gap-2 rounded-xl border border-[#ded4bf] bg-[#fbf7ed] p-4"><div className="flex items-center justify-between gap-3"><Label htmlFor="workshop-description">Короткое описание для клиентов *</Label><span className="text-xs tabular-nums text-muted-foreground">{form.publicDescription.length}/500</span></div><Textarea id="workshop-description" maxLength={500} rows={4} value={form.publicDescription} onChange={(event) => setForm((current) => ({ ...current, publicDescription: event.target.value }))} placeholder="Например: практический мастер-класс по дыханию и мягкой работе со спиной. Подходит новичкам, специальная подготовка не нужна." /><p className="text-xs leading-relaxed text-muted-foreground">Описание появится в клиентском расписании. Клиент откроет его по кнопке «Подробнее о мастер-классе».</p></div> : null}
           {!isRental ? <div className="grid gap-2"><Label>Количество мест</Label><Input type="number" min="1" max="100" value={form.capacity} onChange={(event) => setForm((current) => ({ ...current, capacity: event.target.value }))} /></div> : <div className="grid gap-4 rounded-xl border p-4"><h3 className="font-semibold">Оплата</h3><div className="grid gap-4 sm:grid-cols-3"><div className="grid gap-2"><Label>Стоимость, ₸</Label><Input type="number" min="0" value={form.agreedPrice} onChange={e => setForm(v => ({ ...v, agreedPrice: e.target.value }))} /></div><div className="grid gap-2"><Label>Внесено сейчас, ₸</Label><Input type="number" min="0" value={form.paidAmount} onChange={e => setForm(v => ({ ...v, paidAmount: e.target.value }))} /></div><div className="grid gap-2"><Label>Долг после оплаты</Label><Input readOnly value={`${Math.max(Number(form.agreedPrice || 0) - Number(form.paidAmount || 0), 0).toLocaleString("ru-RU")} ₸`} /></div></div>{Number(form.paidAmount) > 0 ? <div className="grid gap-4 sm:grid-cols-2"><div className="grid gap-2"><Label>Способ оплаты</Label><Select value={form.paymentMethod} onValueChange={paymentMethod => setForm(v => ({ ...v, paymentMethod }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="kaspi">Безналичный Kaspi</SelectItem><SelectItem value="halyk">Безналичный Halyk</SelectItem><SelectItem value="cash">Наличные</SelectItem><SelectItem value="bank_account">Расчётный счёт</SelectItem></SelectContent></Select></div><div className="grid gap-2"><Label>Дата оплаты</Label><Input type="date" value={form.paymentDate} onChange={e => setForm(v => ({ ...v, paymentDate: e.target.value }))} /></div></div> : null}<div className="grid gap-2"><Label>Комментарий</Label><Textarea value={form.rentalNotes} onChange={e => setForm(v => ({ ...v, rentalNotes: e.target.value }))} /></div></div>}
           <div className="grid gap-2 rounded-xl border bg-muted/20 p-3">
             <Label>Состояние занятия</Label>
