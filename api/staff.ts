@@ -6,6 +6,18 @@ const secret = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const adminClient = url && secret ? createClient(url, secret, { auth: { persistSession: false } }) : null;
 
 const temporaryPassword = (phone: string) => phone.replace(/\D/g, "").slice(-6);
+const normalizeEmail = (email: unknown) => String(email || "").trim().toLowerCase();
+const normalizePhone = (phone: unknown) => {
+  const digits = String(phone || "").replace(/\D/g, "");
+  return digits.startsWith("8") && digits.length === 11 ? `7${digits.slice(1)}` : digits;
+};
+
+const publicStaffError = (error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error || "");
+  if (/already.*registered|already.*exists|duplicate|unique/i.test(message)) return "Сотрудник с таким email или телефоном уже существует";
+  if (/invalid.*email|email.*invalid/i.test(message)) return "Email указан некорректно";
+  return message || "Ошибка сервера";
+};
 
 async function requireOwner(req: VercelRequest) {
   if (!adminClient) throw new Error("Серверный доступ Supabase не настроен");
@@ -26,15 +38,38 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (action === "create") {
       const { email, phone, firstName, lastName, middleName, role, position, coachId } = req.body;
-      if (!email || !phone || !firstName || !lastName || !["owner", "admin", "trainer"].includes(role)) return res.status(400).json({ error: "Имя и фамилия обязательны" });
-      const password = temporaryPassword(phone);
-      if (password.length !== 6) return res.status(400).json({ error: "Для временного пароля нужен корректный телефон" });
-      const { data: created, error: createError } = await adminClient!.auth.admin.createUser({ email: String(email).trim().toLowerCase(), password, email_confirm: true, user_metadata: { first_name: firstName, last_name: lastName, middle_name: middleName || null, phone } });
+      const normalizedEmail = normalizeEmail(email);
+      const normalizedPhone = normalizePhone(phone);
+      if (!String(firstName || "").trim() || !String(lastName || "").trim()) return res.status(400).json({ error: "Укажи имя и фамилию" });
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) return res.status(400).json({ error: "Укажи корректный email" });
+      if (normalizedPhone.length !== 11 || !normalizedPhone.startsWith("7")) return res.status(400).json({ error: "Укажи корректный телефон из 11 цифр" });
+      if (!["owner", "admin", "trainer"].includes(role)) return res.status(400).json({ error: "Выбери роль сотрудника" });
+
+      const { data: staffProfiles, error: profilesLookupError } = await adminClient!.from("profiles").select("id,email,phone").in("role", ["owner", "admin", "trainer"]);
+      if (profilesLookupError) throw profilesLookupError;
+      const duplicate = (staffProfiles || []).find(profile => normalizeEmail(profile.email) === normalizedEmail || normalizePhone(profile.phone) === normalizedPhone);
+      if (duplicate) return res.status(409).json({ error: "Сотрудник с таким email или телефоном уже существует" });
+
+      const password = temporaryPassword(normalizedPhone);
+      const { data: created, error: createError } = await adminClient!.auth.admin.createUser({ email: normalizedEmail, password, email_confirm: true, user_metadata: { first_name: String(firstName).trim(), last_name: String(lastName).trim(), middle_name: String(middleName || "").trim() || null, phone: normalizedPhone } });
       if (createError) throw createError;
-      await adminClient!.from("profiles").upsert({ id: created.user.id, email: String(email).trim().toLowerCase(), phone, first_name: firstName, last_name: lastName, middle_name: middleName || null, role, position: position || (role === "trainer" ? "Тренер" : role === "owner" ? "Управляющий" : "Администратор"), is_active: true, must_change_password: true });
-      if (coachId) await adminClient!.from("coaches").update({ user_id: created.user.id, name: `${lastName} ${firstName} ${middleName || ""}`.trim(), phone }).eq("id", coachId);
-      else if (role === "trainer") await adminClient!.from("coaches").insert({ name: `${lastName} ${firstName} ${middleName || ""}`.trim(), phone, is_active: true, user_id: created.user.id });
-      return res.status(200).json({ id: created.user.id });
+      try {
+        const { error: profileError } = await adminClient!.from("profiles").upsert({ id: created.user.id, email: normalizedEmail, phone: normalizedPhone, first_name: String(firstName).trim(), last_name: String(lastName).trim(), middle_name: String(middleName || "").trim() || null, role, position: String(position || "").trim() || (role === "trainer" ? "Тренер" : role === "owner" ? "Управляющий" : "Администратор"), is_active: true, must_change_password: true });
+        if (profileError) throw profileError;
+        const coachName = `${String(lastName).trim()} ${String(firstName).trim()} ${String(middleName || "").trim()}`.trim();
+        if (coachId) {
+          const { error: coachError } = await adminClient!.from("coaches").update({ user_id: created.user.id, name: coachName, phone: normalizedPhone }).eq("id", coachId);
+          if (coachError) throw coachError;
+        } else if (role === "trainer") {
+          const { error: coachError } = await adminClient!.from("coaches").insert({ name: coachName, phone: normalizedPhone, is_active: true, user_id: created.user.id });
+          if (coachError) throw coachError;
+        }
+        return res.status(200).json({ id: created.user.id });
+      } catch (error) {
+        await adminClient!.from("profiles").delete().eq("id", created.user.id);
+        await adminClient!.auth.admin.deleteUser(created.user.id);
+        throw error;
+      }
     }
 
     if (action === "update") {
@@ -88,6 +123,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: "Неизвестное действие" });
   } catch (error) {
     console.error("Staff API error", error);
-    return res.status(500).json({ error: error instanceof Error ? error.message : "Ошибка сервера" });
+    return res.status(500).json({ error: publicStaffError(error) });
   }
 }
