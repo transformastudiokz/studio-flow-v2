@@ -1,11 +1,25 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { Check, Loader2, ChevronLeft, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 
+type PlanFormat = "group" | "individual" | "split";
+
+interface SubscriptionPlan {
+  id: string;
+  name: string;
+  price: number;
+  visits_count: number | null;
+  duration_days: number;
+  description: string | null;
+  plan_format: PlanFormat | null;
+}
+
 const ClientPricing = () => {
   const navigate = useNavigate();
+  const [format, setFormat] = useState<"all" | "group" | "individual">("all");
 
   const { data: plans, isLoading } = useQuery({
     queryKey: ["public_plans"],
@@ -35,6 +49,14 @@ const ClientPricing = () => {
     window.open(`https://wa.me/${adminPhone.replace(/\D/g, '')}?text=${encodeURIComponent(text)}`, '_blank');
   };
 
+  const typedPlans = plans as SubscriptionPlan[] | undefined;
+  const visiblePlans = typedPlans?.filter((plan) => {
+    const planFormat = plan.plan_format || "group";
+    if (format === "group") return planFormat === "group";
+    if (format === "individual") return planFormat === "individual" || planFormat === "split";
+    return true;
+  });
+
   return (
       <div className="client-page">
         {/* Header с кнопкой назад */}
@@ -45,16 +67,38 @@ const ClientPricing = () => {
           <h1 className="client-page-title">Тарифы</h1>
         </div>
 
+        <div className="mb-4 grid grid-cols-3 gap-2 rounded-2xl bg-white/70 p-1.5 shadow-sm">
+          {([
+            ["all", "Все"],
+            ["group", "Групповые"],
+            ["individual", "Индивидуальные"],
+          ] as const).map(([value, label]) => (
+            <Button
+              key={value}
+              type="button"
+              size="sm"
+              variant={format === value ? "default" : "ghost"}
+              className="rounded-xl px-2 text-xs sm:text-sm"
+              onClick={() => setFormat(value)}
+            >
+              {label}
+            </Button>
+          ))}
+        </div>
+
         {isLoading ? (
           <div className="flex justify-center p-8"><Loader2 className="animate-spin text-primary" /></div>
-        ) : plans?.length ? (
+        ) : visiblePlans?.length ? (
           <div className="grid gap-4 md:grid-cols-2">
-            {plans?.map((plan: any) => (
+            {visiblePlans.map((plan) => (
               <div key={plan.id} className="client-surface overflow-hidden">
                 {/* Верхняя часть */}
                 <div className="flex items-start justify-between p-4 pb-3">
                   <div>
                     <h3 className="text-base font-bold leading-tight">{plan.name}</h3>
+                    {plan.plan_format === "split" && (
+                      <div className="mt-1 text-xs font-medium text-[var(--client-sage-deep)]">Сплит-тренировка · цена за человека</div>
+                    )}
                     <div className="flex items-baseline gap-1 mt-1">
                       <span className="text-2xl font-extrabold text-[var(--client-sage-deep)]">{plan.price.toLocaleString()}</span>
                       <span className="text-sm font-medium text-[var(--client-sage-deep)]">₸</span>

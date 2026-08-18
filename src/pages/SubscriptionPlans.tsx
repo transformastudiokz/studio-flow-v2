@@ -12,14 +12,39 @@ import { toast } from "sonner";
 import { Plus, Trash2, Edit, Loader2, Eye, EyeOff } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 
+type PlanFormat = "group" | "individual" | "split";
+type FilterStatus = "all" | "active" | "inactive";
+
+interface SubscriptionPlan {
+  id: string;
+  name: string;
+  price: number;
+  visits_count: number | null;
+  duration_days: number;
+  description: string | null;
+  plan_format: PlanFormat | null;
+  is_active: boolean;
+  is_visible_in_client_portal: boolean | null;
+}
+
+const getErrorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : "Неизвестная ошибка";
+
+const planFormatLabels: Record<PlanFormat, string> = {
+  group: "Групповые занятия",
+  individual: "Индивидуальные занятия",
+  split: "Сплит-тренировки",
+};
+
 const SubscriptionPlans = () => {
   const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(false);
-  const [editingPlan, setEditingPlan] = useState<any>(null);
+  const [editingPlan, setEditingPlan] = useState<SubscriptionPlan | null>(null);
 
   // Фильтры
   const [filterName, setFilterName] = useState("");
-  const [filterStatus, setFilterStatus] = useState<"all" | "active" | "inactive">("all");
+  const [filterFormat, setFilterFormat] = useState<"all" | "group" | "individual">("all");
+  const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
   const [filterMinPrice, setFilterMinPrice] = useState("");
   const [filterMaxPrice, setFilterMaxPrice] = useState("");
   const [filterMinVisits, setFilterMinVisits] = useState("");
@@ -34,6 +59,7 @@ const SubscriptionPlans = () => {
     visits_count: "",
     duration_days: "30",
     description: "",
+    plan_format: "group" as PlanFormat,
     is_active: true,
     is_visible_in_client_portal: true
   });
@@ -61,6 +87,7 @@ const SubscriptionPlans = () => {
         visits_count: formData.visits_count && formData.visits_count !== "0" ? Number(formData.visits_count) : null,
         duration_days: Number(formData.duration_days),
         description: formData.description,
+        plan_format: formData.plan_format,
         is_active: formData.is_active,
         is_visible_in_client_portal: formData.is_visible_in_client_portal
       };
@@ -77,10 +104,10 @@ const SubscriptionPlans = () => {
       toast.success(editingPlan ? "Тариф обновлен" : "Тариф создан");
       setIsOpen(false);
       setEditingPlan(null);
-      setFormData({ name: "", price: "", visits_count: "", duration_days: "30", description: "", is_active: true, is_visible_in_client_portal: true });
+      setFormData({ name: "", price: "", visits_count: "", duration_days: "30", description: "", plan_format: "group", is_active: true, is_visible_in_client_portal: true });
       queryClient.invalidateQueries({ queryKey: ["subscription-plans"] });
     },
-    onError: (err: any) => toast.error("Ошибка: " + err.message)
+    onError: (error: unknown) => toast.error("Ошибка: " + getErrorMessage(error))
   });
 
   // Удаление
@@ -93,10 +120,10 @@ const SubscriptionPlans = () => {
       toast.success("Тариф удален");
       queryClient.invalidateQueries({ queryKey: ["subscription-plans"] });
     },
-    onError: (err: any) => toast.error("Не удалось удалить: " + err.message)
+    onError: (error: unknown) => toast.error("Не удалось удалить: " + getErrorMessage(error))
   });
 
-  const openEdit = (plan: any) => {
+  const openEdit = (plan: SubscriptionPlan) => {
     setEditingPlan(plan);
     setFormData({
       name: plan.name,
@@ -104,6 +131,7 @@ const SubscriptionPlans = () => {
       visits_count: plan.visits_count ? plan.visits_count.toString() : "",
       duration_days: plan.duration_days ? plan.duration_days.toString() : "30",
       description: plan.description || "",
+      plan_format: plan.plan_format || "group",
       is_active: plan.is_active,
       is_visible_in_client_portal: plan.is_visible_in_client_portal ?? true
     });
@@ -112,12 +140,16 @@ const SubscriptionPlans = () => {
 
   const openCreate = () => {
     setEditingPlan(null);
-    setFormData({ name: "", price: "", visits_count: "", duration_days: "30", description: "", is_active: true, is_visible_in_client_portal: true });
+    setFormData({ name: "", price: "", visits_count: "", duration_days: "30", description: "", plan_format: "group", is_active: true, is_visible_in_client_portal: true });
     setIsOpen(true);
   };
 
-  const filteredPlans = plans.filter((plan: any) => {
+  const typedPlans = plans as SubscriptionPlan[];
+  const filteredPlans = typedPlans.filter((plan) => {
     if (filterName && !plan.name.toLowerCase().includes(filterName.toLowerCase())) return false;
+    const planFormat = (plan.plan_format || "group") as PlanFormat;
+    if (filterFormat === "group" && planFormat !== "group") return false;
+    if (filterFormat === "individual" && planFormat !== "individual" && planFormat !== "split") return false;
     if (filterStatus === "active" && !plan.is_active) return false;
     if (filterStatus === "inactive" && plan.is_active) return false;
     if (filterMinPrice && plan.price < Number(filterMinPrice)) return false;
@@ -129,7 +161,7 @@ const SubscriptionPlans = () => {
     return true;
   });
 
-  const hasActiveFilters = filterName || filterStatus !== "all" || filterMinPrice || filterMaxPrice || filterMinVisits || filterMaxVisits || filterMinDays || filterMaxDays;
+  const hasActiveFilters = filterName || filterFormat !== "all" || filterStatus !== "all" || filterMinPrice || filterMaxPrice || filterMinVisits || filterMaxVisits || filterMinDays || filterMaxDays;
 
   return (
     <div className="space-y-6 animate-in fade-in">
@@ -149,7 +181,7 @@ const SubscriptionPlans = () => {
           <span className="text-sm font-medium">Фильтры</span>
           {hasActiveFilters && (
             <Button variant="ghost" size="sm" className="text-xs h-7" onClick={() => {
-              setFilterName(""); setFilterStatus("all");
+              setFilterName(""); setFilterFormat("all"); setFilterStatus("all");
               setFilterMinPrice(""); setFilterMaxPrice("");
               setFilterMinVisits(""); setFilterMaxVisits("");
               setFilterMinDays(""); setFilterMaxDays("");
@@ -157,6 +189,23 @@ const SubscriptionPlans = () => {
               Сбросить
             </Button>
           )}
+        </div>
+        <div className="flex flex-wrap gap-2" aria-label="Формат абонемента">
+          {([
+            ["all", "Все абонементы"],
+            ["group", "Групповые занятия"],
+            ["individual", "Индивидуальные"],
+          ] as const).map(([value, label]) => (
+            <Button
+              key={value}
+              type="button"
+              size="sm"
+              variant={filterFormat === value ? "default" : "outline"}
+              onClick={() => setFilterFormat(value)}
+            >
+              {label}
+            </Button>
+          ))}
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
           <Input
@@ -167,7 +216,7 @@ const SubscriptionPlans = () => {
           />
           <select
             value={filterStatus}
-            onChange={e => setFilterStatus(e.target.value as any)}
+            onChange={e => setFilterStatus(e.target.value as FilterStatus)}
             className="h-8 text-sm border rounded-md px-2 bg-background"
           >
             <option value="all">Все статусы</option>
@@ -195,12 +244,15 @@ const SubscriptionPlans = () => {
       {isLoading ? <Loader2 className="animate-spin" /> : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredPlans.length === 0 && <p className="text-muted-foreground col-span-full">Нет тарифов по выбранным фильтрам.</p>}
-          {filteredPlans.map((plan: any) => (
+          {filteredPlans.map((plan) => (
             <Card key={plan.id} className={`relative transition-all hover:shadow-md flex flex-col ${!plan.is_active ? 'opacity-60 grayscale' : ''}`}>
               <CardHeader className="pb-3">
                 <div className="flex justify-between items-start">
                   <div>
                     <CardTitle className="text-xl">{plan.name}</CardTitle>
+                    <span className="mt-2 inline-flex rounded-full bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">
+                      {planFormatLabels[(plan.plan_format || "group") as PlanFormat]}
+                    </span>
                     <div className="text-2xl font-bold mt-2 text-primary">
                       {plan.price.toLocaleString()} ₸
                     </div>
@@ -272,6 +324,18 @@ const SubscriptionPlans = () => {
             <div className="grid gap-2">
               <Label>Название</Label>
               <Input value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Например: 8 занятий" />
+            </div>
+            <div className="grid gap-2">
+              <Label>Категория</Label>
+              <select
+                value={formData.plan_format}
+                onChange={e => setFormData({...formData, plan_format: e.target.value as PlanFormat})}
+                className="h-10 rounded-md border bg-background px-3 text-sm"
+              >
+                <option value="group">Групповые занятия</option>
+                <option value="individual">Индивидуальные занятия</option>
+                <option value="split">Сплит-тренировки</option>
+              </select>
             </div>
             <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-2">
