@@ -78,8 +78,8 @@ const ClientSchedule = () => {
       const { data, error } = await supabase
         .from('schedule_sessions')
         .select(`
-            id, start_time, end_time, capacity, room, booking_status, booking_closed_reason, public_description, is_client_visible,
-            class_type:class_types(name, color, description),
+            id, start_time, end_time, capacity, room, coach_id, booking_status, booking_closed_reason, public_description, is_client_visible,
+            class_type:class_types(id, name, color, description),
             coach:coaches(name),
             my_booking:bookings(id, user_id, subscription_id, status)
         `)
@@ -126,21 +126,43 @@ const ClientSchedule = () => {
             seats_left: Math.max(0, item.capacity - totalBooked)
           };
       });
-    }
+    },
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 
   // 2. Запись на занятие
   const bookMutation = useMutation({
-    mutationFn: async (sessionId: string) => {
+    mutationFn: async (target: { id: string; start_time: string; class_type?: { id?: string }; room?: string | null; coach_id?: string | null }) => {
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), 15_000);
       const { data: { session } } = await supabase.auth.getSession();
-      const response = await fetch('/api/schedule', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
-        body: JSON.stringify({ action: 'book-own-session', sessionId }),
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Не удалось записаться');
-      return result;
+      try {
+        const response = await fetch('/api/schedule', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+          body: JSON.stringify({
+            action: 'book-own-session',
+            sessionId: target.id,
+            startTime: target.start_time,
+            classTypeId: target.class_type?.id,
+            room: target.room ?? null,
+            coachId: target.coach_id ?? null,
+          }),
+          signal: controller.signal,
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Не удалось записаться');
+        return result;
+      } catch (error) {
+        if (error && typeof error === 'object' && 'name' in error && error.name === 'AbortError') {
+          throw new Error('Сервер долго не отвечает. Попробуй ещё раз.');
+        }
+        throw error;
+      } finally {
+        window.clearTimeout(timeoutId);
+      }
     },
     onSuccess: () => {
       setPendingSessionId(null);
@@ -151,6 +173,7 @@ const ClientSchedule = () => {
     onError: (error: any) => {
       setPendingSessionId(null);
       toast.error(error.message || "Ошибка записи");
+      queryClient.invalidateQueries({ queryKey: ['client_schedule'] });
     }
   });
 
@@ -175,9 +198,9 @@ const ClientSchedule = () => {
     onError: (error: any) => toast.error(error.message)
   });
 
-  const handleBook = (sessionId: string) => {
-    setPendingSessionId(sessionId);
-    bookMutation.mutate(sessionId);
+  const handleBook = (session: any) => {
+    setPendingSessionId(session.id);
+    bookMutation.mutate(session);
   };
 
   const handleCancel = (bookingId: string, subscriptionId: string, startTime: string) => {
@@ -338,7 +361,7 @@ const ClientSchedule = () => {
                                 </Button>
                             ) : (
                                 <Button
-                                onClick={() => handleBook(session.id)}
+                                onClick={() => handleBook(session)}
                                 disabled={pendingSessionId === session.id}
                                 className="client-primary client-focus h-9 w-full whitespace-nowrap rounded-xl px-4 text-xs shadow-none"
                                 >
