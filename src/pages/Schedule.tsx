@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { addDays, addWeeks, endOfWeek, format, formatDistanceToNow, isSameDay, parseISO, startOfWeek } from "date-fns";
 import { ru } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, Copy, Loader2, Plus, RefreshCw, RotateCcw } from "lucide-react";
+import { ChevronLeft, ChevronRight, Copy, FileSpreadsheet, Loader2, Plus, RefreshCw, RotateCcw } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { fetchClientStatuses, getClientStatusForBooking } from "@/lib/client-status";
 import { normalizeRoom, showsFirstBookingIndicator, type ScheduleSession } from "@/lib/schedule";
+import { exportScheduleWeekToExcel } from "@/lib/schedule-export";
 import { cn } from "@/lib/utils";
 import { CopyWeekDialog } from "@/components/schedule/CopyWeekDialog";
 import { ScheduleGrid, type ScheduleView } from "@/components/schedule/ScheduleGrid";
@@ -50,6 +51,7 @@ export default function Schedule() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingSession, setEditingSession] = useState<ScheduleSession | null>(null);
   const [copyOpen, setCopyOpen] = useState(false);
+  const [exportingExcel, setExportingExcel] = useState(false);
 
   const weekDate = addWeeks(new Date(), weekOffset);
   const weekStart = startOfWeek(weekDate, { weekStartsOn: 1 });
@@ -217,6 +219,19 @@ export default function Schedule() {
     setClassFilter("all");
   };
 
+  const exportWeek = async () => {
+    if (exportingExcel) return;
+    setExportingExcel(true);
+    try {
+      await exportScheduleWeekToExcel(sessions, weekStart, weekDays[6]);
+      toast.success("Расписание в Excel скачано");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Не удалось создать Excel-файл");
+    } finally {
+      setExportingExcel(false);
+    }
+  };
+
   return (
     <div className="space-y-4 pb-8 animate-in fade-in">
       <header className="space-y-4 border-b pb-4">
@@ -231,6 +246,10 @@ export default function Schedule() {
               <Button variant="ghost" className="h-9 px-3 text-sm" onClick={() => { setWeekOffset(0); setSelectedDay(new Date()); }}>Сегодня</Button>
               <Button variant="ghost" size="icon" className="h-9 w-9" aria-label="Следующая неделя" onClick={() => setWeekOffset((value) => value + 1)}><ChevronRight className="h-4 w-4" /></Button>
             </div>
+            <Button variant="outline" size="sm" onClick={exportWeek} disabled={sessions.length === 0 || exportingExcel}>
+              {exportingExcel ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <FileSpreadsheet className="mr-1.5 h-4 w-4" />}
+              {exportingExcel ? "Создаём Excel…" : "Выгрузить Excel"}
+            </Button>
             <Button variant="outline" size="sm" onClick={() => setCopyOpen(true)} disabled={sessions.length === 0}><Copy className="mr-1.5 h-4 w-4" />Копировать неделю</Button>
             <Button size="sm" onClick={() => openEditor(null)}><Plus className="mr-1.5 h-4 w-4" />Добавить занятие</Button>
           </div>
