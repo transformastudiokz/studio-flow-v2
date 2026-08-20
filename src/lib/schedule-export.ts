@@ -3,7 +3,8 @@ import { formatCoachShortName, normalizeRoom, type ScheduleSession } from "@/lib
 const ALMATY_TIME_ZONE = "Asia/Almaty";
 const WEEKDAYS = ["ВС", "ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ"];
 const MONTHS_GENITIVE = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
-const EXCLUDED_CLASS_PATTERN = /индивидуал|сплит|аренд/i;
+const EXCLUDED_CLASS_PATTERN = /индивидуал/i;
+const WORKSHOP_PATTERN = /мастер[\s-]*класс/i;
 const YOGA_PATTERN = /йог|хатх|виньяс|аштанг|fly yoga/i;
 
 type AlmatyParts = {
@@ -49,16 +50,24 @@ const timeLabel = (value: string) => {
 
 export const isGroupSessionForExport = (session: ScheduleSession) => {
   const name = session.class_type?.name || "";
-  return session.session_kind !== "rental"
-    && session.is_cancelled !== true
-    && session.booking_status !== "cancelled"
-    && session.is_client_visible !== false
-    && !EXCLUDED_CLASS_PATTERN.test(name);
+  return !EXCLUDED_CLASS_PATTERN.test(name);
 };
 
-const sessionText = (session: ScheduleSession) => {
+const isCancelledSession = (session: ScheduleSession) =>
+  session.is_cancelled === true || session.booking_status === "cancelled";
+
+export const formatSessionTextForExport = (session: ScheduleSession) => {
   const coach = formatCoachShortName(session.coach?.name);
-  return `${timeLabel(session.start_time)}–${timeLabel(session.end_time)}\n${session.class_type?.name || "Занятие"}\n${coach} · ${normalizeRoom(session.room)}`;
+  const labels = [
+    ...(isCancelledSession(session) ? ["ОТМЕНЕНО"] : session.booking_status === "closed" ? ["ЗАПИСЬ ЗАКРЫТА"] : []),
+    ...(WORKSHOP_PATTERN.test(session.class_type?.name || "") ? ["МАСТЕР-КЛАСС"] : []),
+  ];
+  return [
+    ...labels,
+    `${timeLabel(session.start_time)}–${timeLabel(session.end_time)}`,
+    session.class_type?.name || "Занятие",
+    `${coach} · ${normalizeRoom(session.room)}`,
+  ].join("\n");
 };
 
 export type ScheduleExportModel = {
@@ -102,7 +111,7 @@ export const buildScheduleExportModel = (
 
   return {
     title: `РАСПИСАНИЕ BALANCE STUDIO · ${titleRange.toLocaleUpperCase("ru-RU")}`,
-    subtitle: "Групповые занятия · актуальные данные CRM · время Казахстана",
+    subtitle: "Расписание студии · без индивидуальных занятий · время Казахстана",
     filename: `Расписание_Balance_Studio_${fileDate(start)}_${fileDate(end)}.xlsx`,
     dayKeys,
     dayLabels,
@@ -123,7 +132,10 @@ export const exportScheduleWeekToExcel = async (
   weekStart: Date,
   weekEnd: Date,
 ) => {
-  const XLSX = await import("xlsx-js-style");
+  const xlsxModule = await import("xlsx-js-style");
+  const XLSX = "utils" in xlsxModule
+    ? xlsxModule
+    : (xlsxModule as unknown as { default: typeof xlsxModule }).default;
   const model = buildScheduleExportModel(sessions, weekStart, weekEnd);
   if (model.hours.length === 0) throw new Error("На этой неделе нет групповых занятий для выгрузки");
 
@@ -136,7 +148,7 @@ export const exportScheduleWeekToExcel = async (
   for (const hour of model.hours) {
     rows.push([
       `${String(hour).padStart(2, "0")}:00`,
-      ...model.dayKeys.map((dayKey) => (model.cells.get(`${dayKey}:${hour}`) || []).map(sessionText).join("\n────────\n")),
+      ...model.dayKeys.map((dayKey) => (model.cells.get(`${dayKey}:${hour}`) || []).map(formatSessionTextForExport).join("\n────────\n")),
     ]);
   }
 
@@ -151,8 +163,11 @@ export const exportScheduleWeekToExcel = async (
     { hpt: 17 },
     { hpt: 25 },
     ...model.hours.map((hour) => {
-      const maximum = Math.max(...model.dayKeys.map((key) => model.cells.get(`${key}:${hour}`)?.length || 0));
-      return { hpt: maximum > 1 ? 95 : 58 };
+      const maximumLines = Math.max(0, ...model.dayKeys.map((key) => {
+        const items = model.cells.get(`${key}:${hour}`) || [];
+        return items.reduce((total, item, index) => total + formatSessionTextForExport(item).split("\n").length + (index > 0 ? 1 : 0), 0);
+      }));
+      return { hpt: Math.max(58, maximumLines * 12 + 12) };
     }),
   ];
   worksheet["!margins"] = { left: 0.1, right: 0.1, top: 0.15, bottom: 0.15, header: 0, footer: 0 };
@@ -178,11 +193,14 @@ export const exportScheduleWeekToExcel = async (
       } else if (column === 0) {
         cell.s = { font: { bold: true, sz: 10, color: { rgb: "294B3D" } }, fill: { fgColor: { rgb: "ECEDE8" } }, border: thinBorder, alignment: { horizontal: "center", vertical: "top" } };
       } else {
-        const sessionNames = (model.cells.get(`${model.dayKeys[column - 1]}:${model.hours[row - 3]}`) || []).map((session) => session.class_type?.name || "");
+        const cellSessions = model.cells.get(`${model.dayKeys[column - 1]}:${model.hours[row - 3]}`) || [];
+        const sessionNames = cellSessions.map((session) => session.class_type?.name || "");
         const yogaOnly = sessionNames.length > 0 && sessionNames.every((name) => YOGA_PATTERN.test(name));
+        const hasWorkshop = sessionNames.some((name) => WORKSHOP_PATTERN.test(name));
+        const cancelledOnly = cellSessions.length > 0 && cellSessions.every(isCancelledSession);
         cell.s = {
-          font: { sz: 9, color: { rgb: "222222" } },
-          fill: { fgColor: { rgb: yogaOnly ? "E4E5E1" : "FFFFFF" } },
+          font: { bold: hasWorkshop, sz: 9, color: { rgb: cancelledOnly ? "6A6A6A" : "222222" } },
+          fill: { fgColor: { rgb: hasWorkshop ? "D1D2CD" : cancelledOnly ? "EEEEEA" : yogaOnly ? "E4E5E1" : "FFFFFF" } },
           border: thinBorder,
           alignment: { horizontal: "left", vertical: "top", wrapText: true },
         };

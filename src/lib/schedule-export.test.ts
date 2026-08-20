@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildScheduleExportModel, isGroupSessionForExport } from "@/lib/schedule-export";
+import { buildScheduleExportModel, formatSessionTextForExport, isGroupSessionForExport } from "@/lib/schedule-export";
 import type { ScheduleSession } from "@/lib/schedule";
 
 const session = (overrides: Partial<ScheduleSession> = {}): ScheduleSession => ({
@@ -22,13 +22,21 @@ const session = (overrides: Partial<ScheduleSession> = {}): ScheduleSession => (
 });
 
 describe("schedule Excel export", () => {
-  it("keeps closed group classes and excludes hidden, cancelled, rental, individual and split sessions", () => {
+  it("exports every session except individual classes", () => {
     expect(isGroupSessionForExport(session({ booking_status: "closed" }))).toBe(true);
-    expect(isGroupSessionForExport(session({ is_client_visible: false }))).toBe(false);
-    expect(isGroupSessionForExport(session({ is_cancelled: true }))).toBe(false);
-    expect(isGroupSessionForExport(session({ session_kind: "rental" }))).toBe(false);
+    expect(isGroupSessionForExport(session({ is_client_visible: false }))).toBe(true);
+    expect(isGroupSessionForExport(session({ is_cancelled: true }))).toBe(true);
+    expect(isGroupSessionForExport(session({ booking_status: "cancelled" }))).toBe(true);
+    expect(isGroupSessionForExport(session({ session_kind: "rental" }))).toBe(true);
     expect(isGroupSessionForExport(session({ class_type: { id: "i", name: "Индивидуальное занятие", color: null } }))).toBe(false);
-    expect(isGroupSessionForExport(session({ class_type: { id: "s", name: "Сплит-тренировка", color: null } }))).toBe(false);
+    expect(isGroupSessionForExport(session({ class_type: { id: "s", name: "Сплит-тренировка", color: null } }))).toBe(true);
+    expect(isGroupSessionForExport(session({ class_type: { id: "w", name: "Мастер-класс", color: null } }))).toBe(true);
+  });
+
+  it("marks closed, cancelled and workshop sessions in the printed text", () => {
+    expect(formatSessionTextForExport(session({ booking_status: "closed" }))).toContain("ЗАПИСЬ ЗАКРЫТА");
+    expect(formatSessionTextForExport(session({ booking_status: "cancelled", is_cancelled: true }))).toContain("ОТМЕНЕНО");
+    expect(formatSessionTextForExport(session({ class_type: { id: "w", name: "Мастер-класс", color: null } }))).toContain("МАСТЕР-КЛАСС");
   });
 
   it("groups starts within one hour and keeps chronological order", () => {
