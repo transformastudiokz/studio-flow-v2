@@ -58,6 +58,13 @@ type CashRow = {
 
 const PAGE_SIZE = 1000;
 const money = (value: number) => `${Math.round(value).toLocaleString("ru-RU")} ₸`;
+const getErrorMessage = (value: unknown) => {
+  if (value instanceof Error) return value.message;
+  if (value && typeof value === "object" && "message" in value && typeof value.message === "string") {
+    return value.message;
+  }
+  return "Повтори загрузку. Если ошибка сохранится, данные не будут изменены.";
+};
 const valueOfRelation = <T,>(value: T | T[] | null | undefined): T | null =>
   Array.isArray(value) ? value[0] ?? null : value ?? null;
 
@@ -131,7 +138,7 @@ const OwnerPayroll = () => {
       const [coachesResult, sessionsResult, bookingHistory, subscriptionsRaw, cashRows] = await Promise.all([
         supabase
           .from("coaches")
-          .select("id,name,user_id,rate_per_client,aggregator_rate_per_client")
+          .select("id,name,user_id,rate_per_client")
           .eq("is_active", true)
           .order("name"),
         supabase
@@ -257,7 +264,7 @@ const OwnerPayroll = () => {
       ) : isError ? (
         <div className="flex min-h-[280px] flex-col items-center justify-center gap-3 rounded-2xl border bg-white p-6 text-center">
           <p className="font-semibold">Не удалось загрузить статистику преподавателей</p>
-          <p className="max-w-lg text-sm text-muted-foreground">{error instanceof Error ? error.message : "Повтори загрузку. Если ошибка сохранится, данные не будут изменены."}</p>
+          <p className="max-w-lg text-sm text-muted-foreground">{getErrorMessage(error)}</p>
           <Button variant="outline" className="gap-2" onClick={() => refetch()}><RefreshCw className="h-4 w-4" />Повторить</Button>
         </div>
       ) : data ? (
