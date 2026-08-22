@@ -164,7 +164,7 @@ export function SessionEditorDialog({ open, onOpenChange, session, initialDate, 
         booking_closed_by: form.bookingStatus === "open" ? null : user?.id || null,
         is_client_visible: form.clientVisible,
         public_description: isWorkshop ? form.publicDescription.trim() : null,
-        session_kind: isRental ? "rental" : "fitness",
+        session_kind: isRental ? "rental" : isWorkshop ? "workshop" : "fitness",
       };
 
       if (isRental) {

@@ -26,6 +26,8 @@ export type ScheduleBooking = {
   user: ScheduleClient | null;
   clientStatus?: import("@/lib/client-status").ClientStatus;
   isTransferred?: boolean;
+  access_type?: import("@/lib/workshop-access").WorkshopAccessType | string | null;
+  eligibility_subscription_id?: string | null;
 };
 
 export type ScheduleSession = {
@@ -41,7 +43,7 @@ export type ScheduleSession = {
   public_description?: string | null;
   is_client_visible?: boolean | null;
   is_cancelled?: boolean | null;
-  session_kind?: "fitness" | "rental";
+  session_kind?: "fitness" | "rental" | "workshop";
   class_type: { id: string; name: string; color: string | null; duration_min?: number | null } | null;
   coach: { id: string; name: string } | null;
   bookings: ScheduleBooking[];
@@ -160,6 +162,7 @@ export const shiftSessionToWeek = (session: ScheduleSession, targetWeekDate: Dat
     booking_closed_reason: null,
     public_description: session.public_description || null,
     is_client_visible: session.is_client_visible !== false,
+    session_kind: session.session_kind || "fitness",
   };
 };
 

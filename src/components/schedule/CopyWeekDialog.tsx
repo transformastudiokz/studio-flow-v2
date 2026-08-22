@@ -39,7 +39,7 @@ export function CopyWeekDialog({ open, onOpenChange, sourceWeek, sessions }: Pro
   const queryClient = useQueryClient();
   const [targetDate, setTargetDate] = useState(format(addWeeks(sourceWeek, 1), "yyyy-MM-dd"));
   const [preview, setPreview] = useState<Preview | null>(null);
-  const source = useMemo(() => sessions.filter((session) => session.booking_status !== "cancelled" && session.session_kind !== "rental"), [sessions]);
+  const source = useMemo(() => sessions.filter((session) => session.booking_status !== "cancelled" && !["rental", "workshop"].includes(session.session_kind || "fitness")), [sessions]);
 
   useEffect(() => {
     if (!open) return;

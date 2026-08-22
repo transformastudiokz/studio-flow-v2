@@ -159,7 +159,7 @@ const Dashboard = () => {
       if (staffResult.error) throw staffResult.error;
 
       const cashRows = cashResult.data || [];
-      const sessions = (sessionsResult.data || []).filter((session: any) => session.session_kind !== "rental");
+      const sessions = (sessionsResult.data || []).filter((session: any) => (session.session_kind || "fitness") === "fitness");
       const subscriptions = subscriptionsResult.data || [];
       const absentBookings: any[] = [];
       const allBookings = sessions.flatMap((session: any) => (session.bookings || []).map((booking: any) => ({ ...booking, session })));

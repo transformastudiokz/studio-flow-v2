@@ -17,6 +17,7 @@ import {
   type ScheduleSession,
 } from "@/lib/schedule";
 import { ClientStatusIndicators, ClientStatusLegend } from "@/components/clients/ClientStatusIndicators";
+import { isWorkshopSession, workshopAccessLabel } from "@/lib/workshop-access";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -90,10 +91,10 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
         .from("schedule_sessions")
         .select(`
           id, class_type_id, coach_id, start_time, end_time, capacity, room,
-          booking_status, booking_closed_reason, is_cancelled,
+          booking_status, booking_closed_reason, is_cancelled, session_kind,
           class_type:class_types(id,name,color,duration_min),
           coach:coaches(id,name),
-          bookings:bookings(id,status,user_id,created_at,user:profiles(id,first_name,last_name,phone,email)),
+          bookings:bookings(id,status,user_id,created_at,subscription_id,eligibility_subscription_id,access_type,user:profiles(id,first_name,last_name,phone,email)),
           onefit_bookings:onefit_bookings(id,client_name,source_status,is_active)
         `)
         .eq("id", session!.id)
@@ -264,13 +265,7 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
       ensureCanBook();
       const existing = details?.bookings.find((booking) => booking.user_id === userId);
       if (existing && occupiesPlace(existing.status)) throw new Error("Клиент уже записан на это занятие");
-      if (existing) {
-        const { error } = await supabase.from("bookings").update({ status: "booked" }).eq("id", existing.id);
-        if (error) throw error;
-        return;
-      }
-      const { error } = await supabase.from("bookings").insert({ session_id: details!.id, user_id: userId, status: "booked" });
-      if (error) throw error;
+      await requestScheduleApi({ action: "book-client-for-session", sessionId: details!.id, userId });
     },
     onSuccess: async () => {
       await refresh();
@@ -312,6 +307,7 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
 
   if (!session) return null;
   const current = details || session;
+  const workshop = isWorkshopSession(current);
   const onefitParticipants = (details?.onefit_bookings || session.onefit_bookings || []).filter((booking) => booking.is_active);
   const occupied = (details?.bookings || session.bookings || []).filter((booking) => occupiesPlace(booking.status)).length + onefitParticipants.length;
   const selectedClient = clientOptions.find((client) => client.id === selectedClientId);
@@ -362,7 +358,7 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
             <Button size="sm" className="h-8" onClick={() => { setShowAdd((value) => !value); setShowCreate(false); }} disabled={current.booking_status !== "open" || occupied >= current.capacity}>
               <Plus className="mr-1.5 h-4 w-4" /> Добавить клиента
             </Button>
-            <Button size="sm" variant="outline" className="h-8" onClick={() => { setShowCreate(true); setShowAdd(true); }} disabled={current.booking_status !== "open" || occupied >= current.capacity}>
+            <Button size="sm" variant="outline" className="h-8" onClick={() => { setShowCreate(true); setShowAdd(true); }} disabled={current.booking_status !== "open" || occupied >= current.capacity || workshop} title={workshop ? "Сначала создай клиента и оформи ему доступ к мастер-классу" : undefined}>
               <UserPlus className="mr-1.5 h-4 w-4" /> Создать нового
             </Button>
             <Button size="sm" variant="ghost" className="ml-auto h-8" onClick={() => { onOpenChange(false); onEdit(current); }}>
@@ -378,7 +374,7 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
                   <div className="grid gap-1.5"><Label>Фамилия</Label><Input value={clientForm.lastName} onChange={(event) => setClientForm((form) => ({ ...form, lastName: event.target.value }))} /></div>
                   <div className="grid gap-1.5"><Label>Телефон *</Label><Input placeholder="+7 700 000-00-00" value={clientForm.phone} onChange={(event) => setClientForm((form) => ({ ...form, phone: event.target.value }))} /></div>
                   <div className="grid gap-1.5"><Label>Email (необязательно)</Label><Input type="email" value={clientForm.email} onChange={(event) => setClientForm((form) => ({ ...form, email: event.target.value }))} /></div>
-                  <Alert className="sm:col-span-2"><AlertCircle className="h-4 w-4" /><AlertDescription>Клиент будет создан без абонемента и сразу записан. Оплату и абонемент можно оформить позже из карточки клиента. В списке появятся звезда и красная точка.</AlertDescription></Alert>
+                  <Alert className="sm:col-span-2"><AlertCircle className="h-4 w-4" /><AlertDescription>{workshop ? "Для записи на мастер-класс у клиента уже должен быть действующий групповой, индивидуальный или сплит-абонемент либо оплаченный пропуск за 6 000 ₸." : "Клиент будет создан без абонемента и сразу записан. Оплату и абонемент можно оформить позже из карточки клиента."}</AlertDescription></Alert>
                   <div className="flex gap-2 sm:col-span-2"><Button onClick={() => createAndBook.mutate()} disabled={createAndBook.isPending}>{createAndBook.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}Создать и записать</Button><Button variant="ghost" onClick={() => setShowCreate(false)}>Назад к поиску</Button></div>
                 </div>
               ) : (
@@ -393,7 +389,7 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
                       </button>
                     ))}
                   </div>
-                  {selectedClient ? <div className="flex items-center justify-between gap-3 rounded-lg bg-muted/30 p-3"><div className="text-sm"><span className="font-medium">{selectedClient.first_name} {selectedClient.last_name || ""}</span>{selectedClient.clientStatus?.membership === "inactive" ? <p className="text-xs text-red-600">Нет действующего абонемента. Запись будет отмечена красным.</p> : null}</div><Button onClick={() => bookExisting.mutate(selectedClient.id)} disabled={bookExisting.isPending}>{selectedClient.clientStatus?.membership === "inactive" ? "Записать без оплаты" : "Записать"}</Button></div> : null}
+                  {selectedClient ? <div className="flex items-center justify-between gap-3 rounded-lg bg-muted/30 p-3"><div className="text-sm"><span className="font-medium">{selectedClient.first_name} {selectedClient.last_name || ""}</span>{workshop ? <p className="text-xs text-muted-foreground">Система проверит бесплатный доступ или оплаченный пропуск.</p> : selectedClient.clientStatus?.membership === "inactive" ? <p className="text-xs text-red-600">Нет действующего абонемента. Запись будет отмечена красным.</p> : null}</div><Button onClick={() => bookExisting.mutate(selectedClient.id)} disabled={bookExisting.isPending}>{workshop ? "Проверить и записать" : selectedClient.clientStatus?.membership === "inactive" ? "Записать без оплаты" : "Записать"}</Button></div> : null}
                 </div>
               )}
             </div>
@@ -416,6 +412,7 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
                       <div className="min-w-0 flex-1">
                         {client ? <Link to={`/clients/${client.id}`} className="block truncate text-[12px] font-semibold leading-3.5 hover:text-primary hover:underline sm:text-[12px]">{client.first_name} {client.last_name || ""}</Link> : <span className="text-[12px] font-semibold">Неизвестный клиент</span>}
                         <p className="truncate text-[10px] leading-3.5 text-muted-foreground">{client?.phone || "Телефон не указан"}</p>
+                        {workshopAccessLabel(booking.access_type) ? <p className={`truncate text-[10px] font-semibold leading-3.5 ${booking.access_type === "workshop_paid" ? "text-emerald-700" : "text-[#745f3c]"}`}>{workshopAccessLabel(booking.access_type)}</p> : null}
                       </div>
                       <Button size="icon" variant="ghost" className="hidden h-8 w-8 justify-self-center text-green-600 sm:inline-flex" aria-label={`Написать ${client?.first_name || "клиенту"} в WhatsApp`} title="Написать в WhatsApp" onClick={() => openWhatsApp(client)} disabled={!client?.phone}><MessageCircle className="h-4 w-4" /></Button>
                       <Select value={displayStatus} disabled={pendingStatusIds.has(booking.id) || booking.isTransferred} onValueChange={(value) => {

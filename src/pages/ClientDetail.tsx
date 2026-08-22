@@ -15,6 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { addDays, format, parseISO } from "date-fns";
 import { ru } from "date-fns/locale";
 import { getSubscriptionState, subscriptionStateLabel } from "@/lib/subscription-state";
+import { isWorkshopSession, workshopAccessLabel } from "@/lib/workshop-access";
 
 export default function ClientDetail() {
   const { id } = useParams();
@@ -151,6 +152,7 @@ export default function ClientDetail() {
           session:schedule_sessions(
             id,
             start_time,
+            session_kind,
             class_type:class_types(name)
           )
         `)
@@ -747,6 +749,8 @@ export default function ClientDetail() {
                     ) : null}
                     {bookings.map((booking: any) => {
                       const transfer = transferNotes.get(booking.id);
+                      const workshop = isWorkshopSession(booking.session || {});
+                      const accessLabel = workshopAccessLabel(booking.access_type);
                       return (
                       <div key={booking.id} className="flex items-center justify-between gap-4 py-2.5 first:pt-0 last:pb-0">
                         <div>
@@ -759,6 +763,11 @@ export default function ClientDetail() {
                               <CalendarSync className="h-3.5 w-3.5" />
                               {transfer.direction === 'from' ? 'Перезаписан на' : 'Перезапись с'}{' '}
                               {transfer.other?.session ? `${format(parseISO(transfer.other.session.start_time), 'dd.MM.yyyy HH:mm')} · ${transfer.other.session.class_type?.name || 'занятие'}` : 'другого занятия'}
+                            </div>
+                          ) : null}
+                          {workshop ? (
+                            <div className="mt-1 text-xs font-medium text-[#745f3c]">
+                              Мастер-класс · {accessLabel || "доступ не определён"} · Без списания из основного абонемента
                             </div>
                           ) : null}
                         </div>

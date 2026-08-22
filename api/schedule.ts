@@ -3,6 +3,14 @@ import { canClientCancel, formatCancellationCutoff, parseCancellationMinutes } f
 import { calculateRemainingVisits, DEDUCTED_BOOKING_STATUSES } from "../src/lib/subscription-usage.js";
 import { createClient } from "@supabase/supabase-js";
 import { ensureClientAccount, normalizeClientPhone } from "./_lib/client-account.js";
+import {
+  isFreeWorkshopMembership,
+  isPaidWorkshopPass,
+  isWorkshopSession,
+  subscriptionIsValidOn,
+  type WorkshopAccessType,
+  type WorkshopSubscription,
+} from "../src/lib/workshop-access.js";
 
 const url = process.env.VITE_SUPABASE_URL || "";
 const secret = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
@@ -85,40 +93,122 @@ async function reconcileSubscriptionUsage(subscriptionId: string, fallbackActiva
   if (updateError) throw updateError;
 }
 
+type SessionForAccess = {
+  id: string;
+  start_time: string;
+  session_kind?: string | null;
+  class_type?: { name?: string | null } | null;
+};
+
+type ResolvedAccess = {
+  subscriptionId: string | null;
+  eligibilitySubscriptionId: string | null;
+  accessType: WorkshopAccessType;
+};
+
+async function resolveBookingAccess(
+  userId: string,
+  session: SessionForAccess,
+  requireStandardSubscription: boolean,
+): Promise<ResolvedAccess> {
+  if (!adminClient) throw new Error("Серверный доступ Supabase не настроен");
+  const sessionDate = almatyDate(session.start_time);
+  const { data, error } = await adminClient
+    .from("user_subscriptions")
+    .select("id,visits_remaining,is_active,start_date,end_date,created_at,plan:subscription_plans(plan_format,product_kind)")
+    .eq("user_id", userId)
+    .eq("is_active", true)
+    .gt("visits_remaining", 0)
+    .or(`start_date.is.null,start_date.lte.${sessionDate}`)
+    .or(`end_date.is.null,end_date.gte.${sessionDate}`)
+    .order("created_at", { ascending: true })
+    .limit(50);
+  if (error) throw error;
+
+  const subscriptions = (data || []).map((item: any) => ({
+    ...item,
+    plan: Array.isArray(item.plan) ? item.plan[0] : item.plan,
+  })) as WorkshopSubscription[];
+  const valid = subscriptions.filter((item) => subscriptionIsValidOn(item, sessionDate));
+
+  if (isWorkshopSession(session)) {
+    const freeMembership = valid.find(isFreeWorkshopMembership);
+    if (freeMembership) {
+      return {
+        subscriptionId: null,
+        eligibilitySubscriptionId: freeMembership.id,
+        accessType: "workshop_member_free",
+      };
+    }
+    const paidPass = valid.find(isPaidWorkshopPass);
+    if (paidPass) {
+      return {
+        subscriptionId: paidPass.id,
+        eligibilitySubscriptionId: null,
+        accessType: "workshop_paid",
+      };
+    }
+    throw new Error("Для записи нужен действующий групповой, индивидуальный или сплит-абонемент либо оплаченный пропуск на мастер-класс за 6 000 ₸");
+  }
+
+  const standardSubscription = valid.find((item) =>
+    (item.plan?.product_kind || "fitness") === "fitness",
+  );
+  if (!standardSubscription && requireStandardSubscription) {
+    throw new Error("Нет действующего абонемента или закончились занятия");
+  }
+  return {
+    subscriptionId: standardSubscription?.id || null,
+    eligibilitySubscriptionId: null,
+    accessType: "standard",
+  };
+}
+
 async function setBookingAttendanceStatus(bookingId: string, nextStatus: string) {
   if (!adminClient) throw new Error("Серверный доступ Supabase не настроен");
   const { data: booking, error: bookingError } = await adminClient
     .from("bookings")
-    .select("id,user_id,subscription_id,status,session:schedule_sessions(start_time)")
+    .select("id,user_id,subscription_id,eligibility_subscription_id,access_type,status,session:schedule_sessions(id,start_time,session_kind,class_type:class_types(name))")
     .eq("id", bookingId).single();
   if (bookingError || !booking) throw bookingError || new Error("Запись не найдена");
   if (booking.status === nextStatus) return { bookingId, subscriptionId: booking.subscription_id };
   const session = Array.isArray(booking.session) ? booking.session[0] : booking.session;
   if (!session?.start_time) throw new Error("У занятия не указана дата");
   const visitDate = almatyDate(session.start_time);
-  const chargedStatuses = new Set<string>(DEDUCTED_BOOKING_STATUSES);
+  const workshop = isWorkshopSession(session);
+  let resolvedAccess: ResolvedAccess | null = null;
+  if (workshop && nextStatus !== "cancelled" && !["workshop_member_free", "workshop_paid", "workshop_complimentary"].includes(booking.access_type || "")) {
+    resolvedAccess = await resolveBookingAccess(booking.user_id, session as SessionForAccess, false);
+  }
+  const accessType = (resolvedAccess?.accessType || booking.access_type || "standard") as WorkshopAccessType;
+  const chargedStatuses = new Set<string>(workshop
+    ? (accessType === "workshop_paid" ? ["completed"] : [])
+    : DEDUCTED_BOOKING_STATUSES);
   const wasCharged = chargedStatuses.has(booking.status);
   const willCharge = chargedStatuses.has(nextStatus);
 
-  let targetSubscriptionId: string | null = booking.subscription_id;
+  let targetSubscriptionId: string | null = resolvedAccess?.subscriptionId ?? booking.subscription_id;
   if (willCharge && !wasCharged) {
     let subscription: any = null;
-    if (booking.subscription_id) {
+    if (targetSubscriptionId) {
       const { data, error } = await adminClient.from("user_subscriptions")
-        .select("id,user_id,visits_total,visits_remaining,start_date,end_date,activation_date,is_active,created_at,plan:subscription_plans(duration_days)")
-        .eq("id", booking.subscription_id).single();
+        .select("id,user_id,visits_total,visits_remaining,start_date,end_date,activation_date,is_active,created_at,plan:subscription_plans(duration_days,product_kind)")
+        .eq("id", targetSubscriptionId).single();
       if (error) throw error;
       subscription = data;
     } else {
       const { data, error } = await adminClient.from("user_subscriptions")
-        .select("id,user_id,visits_total,visits_remaining,start_date,end_date,activation_date,is_active,created_at,plan:subscription_plans(duration_days)")
+        .select("id,user_id,visits_total,visits_remaining,start_date,end_date,activation_date,is_active,created_at,plan:subscription_plans(duration_days,product_kind)")
         .eq("user_id", booking.user_id).eq("is_active", true).gt("visits_remaining", 0)
         .lte("start_date", visitDate).or(`end_date.is.null,end_date.gte.${visitDate}`)
         .order("created_at", { ascending: true }).limit(20);
       if (error) throw error;
       // Самый ранний купленный абонемент расходуется первым: пробный не должен
       // быть пропущен в пользу более нового основного абонемента.
-      subscription = (data || []).sort((a: any, b: any) =>
+      subscription = (data || []).filter((item: any) => {
+        const plan = Array.isArray(item.plan) ? item.plan[0] : item.plan;
+        return workshop ? plan?.product_kind === "workshop" : (plan?.product_kind || "fitness") === "fitness";
+      }).sort((a: any, b: any) =>
         String(a.created_at).localeCompare(String(b.created_at)))[0];
     }
     const subscriptionIsEligible = subscription
@@ -134,9 +224,14 @@ async function setBookingAttendanceStatus(bookingId: string, nextStatus: string)
     targetSubscriptionId = subscriptionIsEligible ? subscription.id : null;
   }
 
-  const shouldUpdateSubscriptionLink = willCharge && !wasCharged;
+  const shouldUpdateSubscriptionLink = (willCharge && !wasCharged) || Boolean(resolvedAccess);
   const updatePayload = shouldUpdateSubscriptionLink
-    ? { status: nextStatus, subscription_id: targetSubscriptionId }
+    ? {
+      status: nextStatus,
+      subscription_id: targetSubscriptionId,
+      eligibility_subscription_id: resolvedAccess?.eligibilitySubscriptionId ?? booking.eligibility_subscription_id ?? null,
+      access_type: accessType,
+    }
     : { status: nextStatus };
   const { data: updatedBooking, error: statusError } = await adminClient.from("bookings")
     .update(updatePayload)
@@ -193,11 +288,17 @@ type ClientSessionReference = {
   coachId?: string | null;
 };
 
-async function bookOwnSession(userId: string, sessionId: string, reference: ClientSessionReference = {}) {
+async function bookOwnSession(
+  userId: string,
+  sessionId: string,
+  reference: ClientSessionReference = {},
+  requireStandardSubscription = true,
+  staffBooking = false,
+) {
   if (!adminClient) throw new Error("Серверный доступ Supabase не настроен");
   let { data: session, error: sessionError } = await adminClient
     .from("schedule_sessions")
-    .select("id,start_time,capacity,booking_status,is_cancelled,is_client_visible,bookings:bookings(id,user_id,status),onefit_bookings:onefit_bookings(id,is_active)")
+    .select("id,start_time,capacity,booking_status,is_cancelled,is_client_visible,session_kind,class_type:class_types(name),bookings:bookings(id,user_id,status),onefit_bookings:onefit_bookings(id,is_active)")
     .eq("id", sessionId)
     .maybeSingle();
   if (sessionError) throw sessionError;
@@ -208,7 +309,7 @@ async function bookOwnSession(userId: string, sessionId: string, reference: Clie
   if (!session && reference.startTime && reference.classTypeId) {
     let replacementQuery = adminClient
       .from("schedule_sessions")
-      .select("id,start_time,capacity,booking_status,is_cancelled,is_client_visible,bookings:bookings(id,user_id,status),onefit_bookings:onefit_bookings(id,is_active)")
+      .select("id,start_time,capacity,booking_status,is_cancelled,is_client_visible,session_kind,class_type:class_types(name),bookings:bookings(id,user_id,status),onefit_bookings:onefit_bookings(id,is_active)")
       .eq("start_time", reference.startTime)
       .eq("class_type_id", reference.classTypeId)
       .eq("is_client_visible", true)
@@ -227,11 +328,11 @@ async function bookOwnSession(userId: string, sessionId: string, reference: Clie
   }
 
   if (!session) throw new Error("Расписание обновилось. Обнови страницу и выбери занятие ещё раз.");
-  if (session.is_client_visible === false) throw new Error("Это занятие недоступно в клиентском расписании");
+  if (!staffBooking && session.is_client_visible === false) throw new Error("Это занятие недоступно в клиентском расписании");
   if (session.booking_status !== "open" || session.is_cancelled) {
     throw new Error("Запись на это занятие закрыта");
   }
-  if (new Date(session.start_time).getTime() <= Date.now()) {
+  if (!staffBooking && new Date(session.start_time).getTime() <= Date.now()) {
     throw new Error("Нельзя записаться на прошедшее занятие");
   }
 
@@ -244,34 +345,28 @@ async function bookOwnSession(userId: string, sessionId: string, reference: Clie
     + (session.onefit_bookings || []).filter((booking: { is_active: boolean }) => booking.is_active).length;
   if (occupied >= Number(session.capacity)) throw new Error("К сожалению, места уже закончились");
 
-  const sessionDate = almatyDate(session.start_time);
-  const { data: subscriptions, error: subscriptionsError } = await adminClient
-    .from("user_subscriptions")
-    .select("id,created_at")
-    .eq("user_id", userId)
-    .eq("is_active", true)
-    .gt("visits_remaining", 0)
-    .or(`start_date.is.null,start_date.lte.${sessionDate}`)
-    .or(`end_date.is.null,end_date.gte.${sessionDate}`)
-    .order("created_at", { ascending: true })
-    .limit(1);
-  if (subscriptionsError) throw subscriptionsError;
-  const subscription = subscriptions?.[0];
-  if (!subscription) throw new Error("Нет действующего абонемента или закончились занятия");
+  const access = await resolveBookingAccess(userId, session as SessionForAccess, requireStandardSubscription);
 
   const reusable = (session.bookings || []).find((booking: { user_id: string; status: string }) =>
-    booking.user_id === userId && booking.status === "cancelled");
+    booking.user_id === userId && ["cancelled", "late_cancel", "absent"].includes(booking.status));
   const query = reusable
-    ? adminClient.from("bookings").update({ status: "booked", subscription_id: subscription.id }).eq("id", reusable.id)
+    ? adminClient.from("bookings").update({
+      status: "booked",
+      subscription_id: access.subscriptionId,
+      eligibility_subscription_id: access.eligibilitySubscriptionId,
+      access_type: access.accessType,
+    }).eq("id", reusable.id)
     : adminClient.from("bookings").insert({
       session_id: session.id,
       user_id: userId,
-      subscription_id: subscription.id,
+      subscription_id: access.subscriptionId,
+      eligibility_subscription_id: access.eligibilitySubscriptionId,
+      access_type: access.accessType,
       status: "booked",
     });
   const { data: booking, error: bookingError } = await query.select("id,status").single();
   if (bookingError || !booking) throw bookingError || new Error("Не удалось создать запись");
-  return { bookingId: booking.id, status: booking.status, subscriptionId: subscription.id, sessionId: session.id };
+  return { bookingId: booking.id, status: booking.status, subscriptionId: access.subscriptionId, accessType: access.accessType, sessionId: session.id };
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -359,31 +454,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         phone,
         contactEmail,
       });
-      const { data: existingBooking, error: existingBookingError } = await adminClient!
-        .from("bookings")
-        .select("id,status")
-        .eq("session_id", sessionId)
-        .eq("user_id", account.id)
-        .maybeSingle();
-      if (existingBookingError) throw existingBookingError;
-      if (existingBooking) {
-        if (!["cancelled", "late_cancel", "absent"].includes(existingBooking.status)) {
-          return res.status(409).json({ error: "Клиент уже записан на это занятие" });
-        }
-        const { error: restoreError } = await adminClient!.from("bookings")
-          .update({ status: "booked" })
-          .eq("id", existingBooking.id);
-        if (restoreError) throw restoreError;
-      } else {
-        const { error: bookingError } = await adminClient!.from("bookings").insert({
-          session_id: sessionId,
-          user_id: account.id,
-          status: "booked",
-        });
-        if (bookingError) throw bookingError;
-      }
+      const booking = await bookOwnSession(account.id, sessionId, {}, false, true);
+      return res.status(account.created ? 201 : 200).json({ ...account, ...booking });
+    }
 
-      return res.status(account.created ? 201 : 200).json(account);
+    if (action === "book-client-for-session") {
+      const sessionId = String(req.body?.sessionId || "");
+      const userId = String(req.body?.userId || "");
+      if (!sessionId || !userId) return res.status(400).json({ error: "Не выбрано занятие или клиент" });
+      const booking = await bookOwnSession(userId, sessionId, {}, false, true);
+      return res.status(201).json(booking);
     }
 
     if (action === "transfer-booking") {
@@ -402,7 +482,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const { data: target, error: targetError } = await adminClient!
         .from("schedule_sessions")
-        .select("id,capacity,booking_status,is_cancelled,bookings:bookings(id,status),onefit_bookings:onefit_bookings(id,is_active)")
+        .select("id,start_time,session_kind,capacity,booking_status,is_cancelled,class_type:class_types(name),bookings:bookings(id,status),onefit_bookings:onefit_bookings(id,is_active)")
         .eq("id", targetSessionId)
         .single();
       if (targetError || !target) throw targetError || new Error("Новое занятие не найдено");
@@ -421,11 +501,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (duplicateError) throw duplicateError;
       if (duplicates?.length) return res.status(409).json({ error: "Клиент уже записан на выбранное занятие" });
 
+      const targetAccess = await resolveBookingAccess(source.user_id, target as SessionForAccess, false);
+
       const { error: cancelError } = await adminClient!.from("bookings").update({ status: "cancelled" }).eq("id", source.id);
       if (cancelError) throw cancelError;
       const { data: createdBooking, error: insertError } = await adminClient!
         .from("bookings")
-        .insert({ session_id: targetSessionId, user_id: source.user_id, status: "booked" })
+        .insert({
+          session_id: targetSessionId,
+          user_id: source.user_id,
+          subscription_id: targetAccess.subscriptionId,
+          eligibility_subscription_id: targetAccess.eligibilitySubscriptionId,
+          access_type: targetAccess.accessType,
+          status: "booked",
+        })
         .select("id")
         .single();
       if (insertError || !createdBooking) {

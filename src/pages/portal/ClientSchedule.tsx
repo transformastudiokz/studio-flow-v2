@@ -30,6 +30,14 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { canClientCancel, parseCancellationMinutes } from "@/lib/cancellation";
+import {
+  isFreeWorkshopMembership,
+  isPaidWorkshopPass,
+  isWorkshopSession,
+  subscriptionIsValidOn,
+  workshopAccessLabel,
+  type WorkshopSubscription,
+} from "@/lib/workshop-access";
 
 const ClientSchedule = () => {
   const queryClient = useQueryClient();
@@ -78,10 +86,10 @@ const ClientSchedule = () => {
       const { data, error } = await supabase
         .from('schedule_sessions')
         .select(`
-            id, start_time, end_time, capacity, room, coach_id, booking_status, booking_closed_reason, public_description, is_client_visible,
+            id, start_time, end_time, capacity, room, coach_id, booking_status, booking_closed_reason, public_description, is_client_visible, session_kind,
             class_type:class_types(id, name, color, description),
             coach:coaches(name),
-            my_booking:bookings(id, user_id, subscription_id, status)
+            my_booking:bookings(id, user_id, subscription_id, status, access_type)
         `)
         .gte('start_time', start)
         .lte('start_time', end)
@@ -89,6 +97,20 @@ const ClientSchedule = () => {
         .order('start_time');
 
       if (error) throw error;
+
+      const { data: subscriptions, error: subscriptionsError } = user?.id
+        ? await supabase
+          .from('user_subscriptions')
+          .select('id,visits_remaining,is_active,start_date,end_date,created_at,plan:subscription_plans(plan_format,product_kind)')
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .gt('visits_remaining', 0)
+        : { data: [], error: null };
+      if (subscriptionsError) throw subscriptionsError;
+      const availableSubscriptions = (subscriptions || []).map((subscription: any) => ({
+        ...subscription,
+        plan: Array.isArray(subscription.plan) ? subscription.plan[0] : subscription.plan,
+      })) as WorkshopSubscription[];
 
       const sessionIds = data.map((item: any) => item.id);
       const { data: oneFitCounts, error: oneFitError } = sessionIds.length
@@ -113,6 +135,16 @@ const ClientSchedule = () => {
           const myBooking = item.my_booking?.find((booking: any) =>
             booking.user_id === user?.id && occupiesPlace(booking.status),
           );
+          const workshop = isWorkshopSession(item);
+          const sessionDate = format(parseISO(item.start_time), 'yyyy-MM-dd');
+          const validSubscriptions = availableSubscriptions.filter((subscription) => subscriptionIsValidOn(subscription, sessionDate));
+          const workshopAccess = !workshop
+            ? null
+            : validSubscriptions.some(isFreeWorkshopMembership)
+              ? 'free'
+              : validSubscriptions.some(isPaidWorkshopPass)
+                ? 'paid'
+                : 'none';
 
           return {
             ...item,
@@ -123,6 +155,8 @@ const ClientSchedule = () => {
             my_booking_id: myBooking?.id,
             my_booking_status: myBooking?.status,
             my_subscription_id: myBooking?.subscription_id,
+            my_access_type: myBooking?.access_type,
+            workshop_access: workshopAccess,
             seats_left: Math.max(0, item.capacity - totalBooked)
           };
       });
@@ -287,6 +321,14 @@ const ClientSchedule = () => {
               const cancellationAllowed = cancellationMinutes !== null
                 && cancellationMinutes !== undefined
                 && canClientCancel(startDate, cancellationMinutes);
+              const workshop = isWorkshopSession(session);
+              const workshopAccessText = session.is_booked_by_me
+                ? workshopAccessLabel(session.my_access_type)
+                : session.workshop_access === 'free'
+                  ? 'Бесплатно по вашему абонементу'
+                  : session.workshop_access === 'paid'
+                    ? 'Пропуск оплачен · 6 000 ₸'
+                    : 'Нужен пропуск · 6 000 ₸';
               
               return (
                 <Card 
@@ -320,6 +362,7 @@ const ClientSchedule = () => {
                         {session.room ? <p className="mt-0.5 truncate text-xs text-[#858880]">{session.room}</p> : null}
                         {session.booking_status !== 'open' && <p className="mt-1 text-[11px] font-semibold text-[#6f706b]">{session.booking_status === 'cancelled' ? "Занятие отменено" : "Запись закрыта"}{session.booking_closed_reason ? ` · ${session.booking_closed_reason}` : ""}</p>}
                         {/мастер[\s-]*класс/i.test(session.class_type?.name || "") ? <button type="button" className="client-focus mt-2 inline-flex items-center gap-1.5 rounded-lg bg-[#f5efe2] px-2.5 py-1.5 text-[11px] font-semibold text-[#745f3c]" onClick={(event) => { event.stopPropagation(); setSelectedClassInfo({ ...session.class_type, description: session.public_description || session.class_type?.description }); }}><Info className="h-3.5 w-3.5" />Подробнее о мастер-классе</button> : null}
+                        {workshop ? <div className={`mt-2 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold ${session.workshop_access === 'none' && !session.is_booked_by_me ? 'bg-[#f7ebe6] text-[#8e5846]' : 'bg-[#f5efe2] text-[#745f3c]'}`}>{workshopAccessText}</div> : null}
 
                         <div className="mt-3 grid min-w-0 grid-cols-1 gap-2 min-[360px]:grid-cols-[minmax(0,1fr)_auto]" onClick={(e) => e.stopPropagation()}>
                            {/* e.stopPropagation() ВАЖНО: Чтобы клик по кнопке не открывал инфо */}
@@ -355,6 +398,8 @@ const ClientSchedule = () => {
                                 )
                             ) : session.booking_status !== 'open' ? (
                                 <Button disabled variant="secondary" className="h-9 w-full whitespace-nowrap rounded-xl bg-[#ece8df] px-3 text-xs text-[#6f706b]">{session.booking_status === 'cancelled' ? "Занятие отменено" : "Запись закрыта"}</Button>
+                            ) : workshop && session.workshop_access === 'none' ? (
+                                <Button disabled variant="secondary" className="h-9 w-full whitespace-nowrap rounded-xl bg-[#f7ebe6] px-3 text-xs text-[#8e5846]">Оформить у администратора</Button>
                             ) : isFull ? (
                                 <Button disabled variant="secondary" className="h-9 w-full whitespace-nowrap rounded-xl bg-[#ece8df] px-3 text-xs text-[#6f706b]">
                                 Заполнено

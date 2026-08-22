@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { updateBookingStatus } from "@/lib/booking-status";
@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Link } from "react-router-dom";
 import { fetchClientStatuses, getClientStatusForBooking } from "@/lib/client-status";
 import { ClientStatusIndicators, ClientStatusLegend } from "@/components/clients/ClientStatusIndicators";
+import { isWorkshopSession } from "@/lib/workshop-access";
 
 const getCoachName = (coach: any) => {
   if (!coach) return 'Без тренера';
@@ -75,11 +76,11 @@ const Attendance = () => {
       let query = supabase
         .from('schedule_sessions')
         .select(`
-            id, start_time, end_time, room,
+            id, start_time, end_time, room, session_kind,
             class_type:class_types(id, name),
             coach:coaches(id, name),
             bookings:bookings(
-                id, status, user_id,
+                id, status, user_id, access_type,
                 user:profiles(id, first_name, last_name, phone)
             )
         `)
@@ -162,19 +163,14 @@ const Attendance = () => {
   const manualBookMutation = useMutation({
     mutationFn: async () => {
       if (!bookForm.session_id || !bookForm.client_id) throw new Error("Выберите занятие и клиента");
-      const client = activeClients.find((c: any) => c.id === bookForm.client_id);
-      if (!client || !client.subscriptions.length) throw new Error("У клиента нет активного абонемента");
-      const targetSub = client.subscriptions.sort((a: any, b: any) => new Date(a.end_date).getTime() - new Date(b.end_date).getTime())[0];
-      const { data: existing } = await supabase.from('bookings')
-        .select('id').eq('session_id', bookForm.session_id).eq('user_id', bookForm.client_id).maybeSingle();
-      if (existing) throw new Error("Клиент уже записан на это занятие");
-      const { error: bookError } = await supabase.from('bookings').insert({
-        session_id: bookForm.session_id,
-        user_id: bookForm.client_id,
-        subscription_id: targetSub.id, 
-        status: 'booked'
+      const { data: { session } } = await supabase.auth.getSession();
+      const response = await fetch('/api/schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+        body: JSON.stringify({ action: 'book-client-for-session', sessionId: bookForm.session_id, userId: bookForm.client_id }),
       });
-      if (bookError) throw bookError;
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Не удалось записать клиента');
     },
     onSuccess: () => {
       toast.success("Клиент записан");
@@ -314,6 +310,25 @@ const Attendance = () => {
       return fullName.includes(searchLower);
   });
 
+  const workshopSummary = useMemo(() => {
+    const workshops = reportData.filter((session: any) => isWorkshopSession(session));
+    const bookings = workshops.flatMap((session: any) => session.bookings || []);
+    const active = bookings.filter((booking: any) => booking.status !== 'cancelled');
+    const attended = active.filter((booking: any) => booking.status === 'completed').length;
+    const missed = active.filter((booking: any) => ['absent', 'late_cancel'].includes(booking.status)).length;
+    const free = active.filter((booking: any) => booking.access_type === 'workshop_member_free').length;
+    const paid = active.filter((booking: any) => booking.access_type === 'workshop_paid').length;
+    const decided = attended + missed;
+    return {
+      events: workshops.length,
+      registrations: active.length,
+      attended,
+      free,
+      paid,
+      showRate: decided > 0 ? Math.round((attended / decided) * 100) : null,
+    };
+  }, [reportData]);
+
   return (
     <div className="space-y-6 animate-in fade-in">
       <div className="flex flex-wrap justify-between items-start gap-3">
@@ -327,7 +342,7 @@ const Attendance = () => {
                 <DialogContent>
                     <DialogHeader>
                         <DialogTitle>Ручная запись</DialogTitle>
-                        <DialogDescription>Списывает 1 занятие с абонемента.</DialogDescription>
+                        <DialogDescription>Для обычной тренировки используется абонемент. Для мастер-класса система отдельно проверяет бесплатный доступ или пропуск за 6 000 ₸.</DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
                         <div className="space-y-2">
@@ -424,6 +439,24 @@ const Attendance = () => {
       </div>
 
       <ClientStatusLegend className="rounded-lg border bg-white px-4 py-3 shadow-sm" />
+
+      {workshopSummary.events > 0 ? (
+        <section className="rounded-xl border border-[#e4dfd5] bg-[#fffefb] p-4 shadow-sm" aria-labelledby="workshop-analytics-title">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div><h2 id="workshop-analytics-title" className="font-semibold">Мастер-классы</h2><p className="text-xs text-muted-foreground">Отдельно от групповых тренировок и OneFit</p></div>
+            <Badge variant="outline" className="border-[#d8c9ad] bg-[#f5efe2] text-[#745f3c]">{workshopSummary.events} событий</Badge>
+          </div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+            {[
+              ['Записались', workshopSummary.registrations],
+              ['Пришли', workshopSummary.attended],
+              ['Бесплатно', workshopSummary.free],
+              ['Оплачено', workshopSummary.paid],
+              ['Дошли', workshopSummary.showRate === null ? '—' : `${workshopSummary.showRate}%`],
+            ].map(([label, value]) => <div key={label} className="rounded-lg bg-[#f7f6f2] px-3 py-2"><div className="text-lg font-bold tabular-nums text-[#2f3a33]">{value}</div><div className="text-xs text-muted-foreground">{label}</div></div>)}
+          </div>
+        </section>
+      ) : null}
 
       {/* --- ОТОБРАЖЕНИЕ ДАННЫХ (АДАПТИВНОЕ) --- */}
       {isLoading ? <Loader2 className="animate-spin w-8 h-8 mx-auto mt-10" /> : (
