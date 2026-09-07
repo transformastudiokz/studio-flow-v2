@@ -11,6 +11,7 @@ import { fetchClientStatuses, getClientStatusForBooking, type ClientStatus } fro
 import {
   normalizePhone,
   normalizeRoom,
+  bookingOccupiesPlace,
   occupiesPlace,
   showsInSessionParticipants,
   type ScheduleClient,
@@ -18,6 +19,7 @@ import {
 } from "@/lib/schedule";
 import { ClientStatusIndicators, ClientStatusLegend } from "@/components/clients/ClientStatusIndicators";
 import { isWorkshopSession, workshopAccessLabel } from "@/lib/workshop-access";
+import { cn } from "@/lib/utils";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -255,7 +257,7 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
   const ensureCanBook = () => {
     if (!details) throw new Error("Занятие не загружено");
     if (details.booking_status !== "open") throw new Error(details.booking_status === "cancelled" ? "Занятие отменено" : "Сначала открой запись на занятие");
-    const occupied = details.bookings.filter((booking) => occupiesPlace(booking.status)).length
+    const occupied = details.bookings.filter(bookingOccupiesPlace).length
       + (details.onefit_bookings || []).filter((booking) => booking.is_active).length;
     if (occupied >= details.capacity) throw new Error("Свободных мест нет");
   };
@@ -309,18 +311,62 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
   const current = details || session;
   const workshop = isWorkshopSession(current);
   const onefitParticipants = (details?.onefit_bookings || session.onefit_bookings || []).filter((booking) => booking.is_active);
-  const occupied = (details?.bookings || session.bookings || []).filter((booking) => occupiesPlace(booking.status)).length + onefitParticipants.length;
+  const occupied = (details?.bookings || session.bookings || []).filter(bookingOccupiesPlace).length + onefitParticipants.length;
   const selectedClient = clientOptions.find((client) => client.id === selectedClientId);
   // A transferred booking remains visible as history until it is explicitly removed.
   // Explicit removal changes its status to cancelled, which must always hide it here.
   const activeParticipants = (details?.bookings || []).filter(
     (booking) => showsInSessionParticipants(booking.status),
   );
+  const confirmedParticipants = activeParticipants.filter(bookingOccupiesPlace);
+  const queuedParticipants = activeParticipants.filter((booking) => !bookingOccupiesPlace(booking));
 
   const openWhatsApp = (client: ScheduleClient | null) => {
     if (!client?.phone) return toast.error("У клиента не указан телефон");
     const message = `Здравствуйте, ${client.first_name || ""}! Напоминаем о занятии «${current.class_type?.name || "занятие"}» ${format(parseISO(current.start_time), "dd.MM")} в ${format(parseISO(current.start_time), "HH:mm")}.`;
     window.open(`https://wa.me/${normalizePhone(client.phone)}?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
+  };
+
+  const renderBookingRow = (booking: ScheduleSession["bookings"][number], queue = false) => {
+    const client = booking.user;
+    const displayStatus = booking.isTransferred ? "transferred" : booking.status;
+    const status = attendanceStatus[displayStatus as keyof typeof attendanceStatus] || attendanceStatus.booked;
+    return (
+      <div key={booking.id} className={cn("grid min-h-11 grid-cols-[48px_minmax(0,1fr)_44px] items-center gap-x-2 px-4 py-1 sm:min-h-9 sm:grid-cols-[48px_minmax(0,1fr)_40px_136px_40px] sm:py-0", queue && "bg-amber-50/35")}>
+        <ClientStatusIndicators status={booking.clientStatus} reserveSpace />
+        <div className="min-w-0 flex-1">
+          {client ? <Link to={`/clients/${client.id}`} className="block truncate text-[12px] font-semibold leading-3.5 hover:text-primary hover:underline sm:text-[12px]">{client.first_name} {client.last_name || ""}</Link> : <span className="text-[12px] font-semibold">Неизвестный клиент</span>}
+          <p className="truncate text-[10px] leading-3.5 text-muted-foreground">{client?.phone || "Телефон не указан"}</p>
+          {queue ? <p className="truncate text-[10px] font-semibold leading-3.5 text-amber-700">Нет оплаченного доступа · место не занимает</p> : null}
+          {workshopAccessLabel(booking.access_type) ? <p className={`truncate text-[10px] font-semibold leading-3.5 ${booking.access_type === "workshop_paid" ? "text-emerald-700" : "text-[#745f3c]"}`}>{workshopAccessLabel(booking.access_type)}</p> : null}
+        </div>
+        <Button size="icon" variant="ghost" className="hidden h-8 w-8 justify-self-center text-green-600 sm:inline-flex" aria-label={`Написать ${client?.first_name || "клиенту"} в WhatsApp`} title="Написать в WhatsApp" onClick={() => openWhatsApp(client)} disabled={!client?.phone}><MessageCircle className="h-4 w-4" /></Button>
+        {queue ? (
+          <span aria-label={`Статус записи: ${client?.first_name || "клиент"} в очереди`} className="col-span-2 col-start-2 row-start-2 mt-1 inline-flex h-11 w-full items-center justify-center justify-self-center rounded-lg border border-amber-200 bg-amber-50 px-2 text-center text-xs font-semibold text-amber-700 sm:col-span-1 sm:col-start-4 sm:row-start-1 sm:mt-0 sm:h-7 sm:w-[136px]">
+            В очереди
+          </span>
+        ) : (
+          <Select value={displayStatus} disabled={pendingStatusIds.has(booking.id) || booking.isTransferred} onValueChange={(value) => {
+            if (value === "transferred") {
+              setTransferBooking(booking);
+              setTargetSessionId("");
+              return;
+            }
+            updateStatus.mutate({ id: booking.id, status: value });
+          }}>
+            <SelectTrigger aria-label={`Статус посещения: ${client?.first_name || "клиент"}`} className={`col-span-2 col-start-2 row-start-2 mt-1 h-11 w-full justify-self-center text-[11px] font-semibold sm:col-span-1 sm:col-start-4 sm:row-start-1 sm:mt-0 sm:h-7 sm:w-[136px] ${status.className}`}><SelectValue /></SelectTrigger>
+            <SelectContent><SelectItem value="booked">Записан</SelectItem><SelectItem value="completed">Пришёл</SelectItem><SelectItem value="absent">Не пришёл</SelectItem><SelectItem value="transferred">Перенос</SelectItem><SelectItem value="cancelled">Отмена</SelectItem><SelectItem value="late_cancel">Поздняя отмена</SelectItem></SelectContent>
+          </Select>
+        )}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild><Button size="icon" variant="ghost" className="col-start-3 row-start-1 h-11 w-11 justify-self-center sm:col-start-5 sm:h-8 sm:w-8" aria-label={`Действия с записью: ${client?.first_name || "клиент"}`}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem className="sm:hidden" disabled={!client?.phone} onClick={() => openWhatsApp(client)}><MessageCircle className="mr-2 h-4 w-4" />Написать в WhatsApp</DropdownMenuItem>
+            <DropdownMenuItem className="text-red-600" onClick={() => setDeleteBooking(booking)}><Trash2 className="mr-2 h-4 w-4" />Удалить запись</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    );
   };
 
   return (
@@ -402,40 +448,26 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
               <div className="p-12 text-center text-sm text-muted-foreground">На занятие пока никто не записан</div>
             ) : (
               <div className="divide-y">
-                {activeParticipants.map((booking) => {
-                  const client = booking.user;
-                  const displayStatus = booking.isTransferred ? "transferred" : booking.status;
-                  const status = attendanceStatus[displayStatus as keyof typeof attendanceStatus] || attendanceStatus.booked;
-                  return (
-                    <div key={booking.id} className="grid min-h-11 grid-cols-[48px_minmax(0,1fr)_44px] items-center gap-x-2 px-4 py-1 sm:min-h-9 sm:grid-cols-[48px_minmax(0,1fr)_40px_136px_40px] sm:py-0">
-                      <ClientStatusIndicators status={booking.clientStatus} reserveSpace />
-                      <div className="min-w-0 flex-1">
-                        {client ? <Link to={`/clients/${client.id}`} className="block truncate text-[12px] font-semibold leading-3.5 hover:text-primary hover:underline sm:text-[12px]">{client.first_name} {client.last_name || ""}</Link> : <span className="text-[12px] font-semibold">Неизвестный клиент</span>}
-                        <p className="truncate text-[10px] leading-3.5 text-muted-foreground">{client?.phone || "Телефон не указан"}</p>
-                        {workshopAccessLabel(booking.access_type) ? <p className={`truncate text-[10px] font-semibold leading-3.5 ${booking.access_type === "workshop_paid" ? "text-emerald-700" : "text-[#745f3c]"}`}>{workshopAccessLabel(booking.access_type)}</p> : null}
-                      </div>
-                      <Button size="icon" variant="ghost" className="hidden h-8 w-8 justify-self-center text-green-600 sm:inline-flex" aria-label={`Написать ${client?.first_name || "клиенту"} в WhatsApp`} title="Написать в WhatsApp" onClick={() => openWhatsApp(client)} disabled={!client?.phone}><MessageCircle className="h-4 w-4" /></Button>
-                      <Select value={displayStatus} disabled={pendingStatusIds.has(booking.id) || booking.isTransferred} onValueChange={(value) => {
-                        if (value === "transferred") {
-                          setTransferBooking(booking);
-                          setTargetSessionId("");
-                          return;
-                        }
-                        updateStatus.mutate({ id: booking.id, status: value });
-                      }}>
-                        <SelectTrigger aria-label={`Статус посещения: ${client?.first_name || "клиент"}`} className={`col-span-2 col-start-2 row-start-2 mt-1 h-11 w-full justify-self-center text-[11px] font-semibold sm:col-span-1 sm:col-start-4 sm:row-start-1 sm:mt-0 sm:h-7 sm:w-[136px] ${status.className}`}><SelectValue /></SelectTrigger>
-                        <SelectContent><SelectItem value="booked">Записан</SelectItem><SelectItem value="completed">Пришёл</SelectItem><SelectItem value="absent">Не пришёл</SelectItem><SelectItem value="transferred">Перенос</SelectItem><SelectItem value="cancelled">Отмена</SelectItem><SelectItem value="late_cancel">Поздняя отмена</SelectItem></SelectContent>
-                      </Select>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild><Button size="icon" variant="ghost" className="col-start-3 row-start-1 h-11 w-11 justify-self-center sm:col-start-5 sm:h-8 sm:w-8" aria-label={`Действия с записью: ${client?.first_name || "клиент"}`}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem className="sm:hidden" disabled={!client?.phone} onClick={() => openWhatsApp(client)}><MessageCircle className="mr-2 h-4 w-4" />Написать в WhatsApp</DropdownMenuItem>
-                          <DropdownMenuItem className="text-red-600" onClick={() => setDeleteBooking(booking)}><Trash2 className="mr-2 h-4 w-4" />Удалить запись</DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                {confirmedParticipants.length > 0 ? (
+                  <div>
+                    <div className="flex min-h-6 items-center px-4 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+                      <span>Основная запись · {confirmedParticipants.length}</span>
                     </div>
-                  );
-                })}
+                    <div className="divide-y">
+                      {confirmedParticipants.map((booking) => renderBookingRow(booking))}
+                    </div>
+                  </div>
+                ) : null}
+                {queuedParticipants.length > 0 ? (
+                  <div className="border-t-2 border-amber-100 bg-amber-50/20">
+                    <div className="flex min-h-6 items-center px-4 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                      <span>В очереди · {queuedParticipants.length}</span>
+                    </div>
+                    <div className="divide-y divide-amber-100/80">
+                      {queuedParticipants.map((booking) => renderBookingRow(booking, true))}
+                    </div>
+                  </div>
+                ) : null}
                 {onefitParticipants.length > 0 ? (
                   <div className="border-t-2 border-sky-100 bg-slate-50/80">
                     <div className="flex min-h-6 items-center px-4 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-700">

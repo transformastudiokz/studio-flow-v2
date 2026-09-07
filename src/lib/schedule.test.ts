@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   formatCoachShortName,
+  bookingOccupiesPlace,
   normalizePhone,
   normalizeRoom,
   occupiesPlace,
@@ -40,6 +41,13 @@ describe("schedule business rules", () => {
     expect(occupiesPlace("cancelled")).toBe(false);
     expect(occupiesPlace("late_cancel")).toBe(false);
     expect(occupiesPlace("absent")).toBe(false);
+  });
+
+  it("does not count unpaid booked clients as occupying a place", () => {
+    expect(bookingOccupiesPlace({ status: "booked", subscription_id: null, eligibility_subscription_id: null, access_type: "standard" })).toBe(false);
+    expect(bookingOccupiesPlace({ status: "booked", subscription_id: "subscription-1", eligibility_subscription_id: null, access_type: "standard" })).toBe(true);
+    expect(bookingOccupiesPlace({ status: "booked", subscription_id: null, eligibility_subscription_id: null, access_type: "workshop_paid" })).toBe(true);
+    expect(bookingOccupiesPlace({ status: "completed", subscription_id: null, eligibility_subscription_id: null, access_type: "standard" })).toBe(true);
   });
 
   it("shows first-booking stars for attendance outcomes but not cancellations", () => {

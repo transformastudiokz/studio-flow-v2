@@ -5,7 +5,7 @@ import { ru } from "date-fns/locale";
 import { ChevronLeft, ChevronRight, Copy, FileSpreadsheet, Loader2, Plus, RefreshCw, RotateCcw } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { fetchClientStatuses, getClientStatusForBooking } from "@/lib/client-status";
-import { normalizeRoom, showsFirstBookingIndicator, type ScheduleSession } from "@/lib/schedule";
+import { isDeletedSession, normalizeRoom, showsFirstBookingIndicator, type ScheduleSession } from "@/lib/schedule";
 import { exportScheduleWeekToExcel } from "@/lib/schedule-export";
 import { cn } from "@/lib/utils";
 import { CopyWeekDialog } from "@/components/schedule/CopyWeekDialog";
@@ -72,7 +72,7 @@ export default function Schedule() {
           booking_status, booking_closed_reason, public_description, is_cancelled, is_client_visible, session_kind,
           class_type:class_types(id,name,color,duration_min),
           coach:coaches(id,name),
-          bookings:bookings(id,status,user_id,created_at,user:profiles(id,first_name,last_name,phone,email)),
+          bookings:bookings(id,status,user_id,created_at,subscription_id,eligibility_subscription_id,access_type,user:profiles(id,first_name,last_name,phone,email)),
           onefit_bookings:onefit_bookings(id,client_name,source_status,is_active),
           rental_booking:rental_bookings(id,renter_id,service_id,agreed_price,rental_status,notes,renter:profiles!rental_bookings_renter_id_fkey(id,first_name,last_name,phone,email))
         `)
@@ -81,7 +81,7 @@ export default function Schedule() {
         .order("start_time");
       if (error) throw error;
 
-      const raw = (data || []) as unknown as ScheduleSession[];
+      const raw = ((data || []) as unknown as ScheduleSession[]).filter((item) => !isDeletedSession(item));
       const rentalBookingIds = raw.flatMap((item) => {
         const rental = Array.isArray(item.rental_booking) ? item.rental_booking[0] : item.rental_booking;
         return rental?.id ? [rental.id] : [];
@@ -112,6 +112,10 @@ export default function Schedule() {
         ...item,
         rental_booking: rentalWithFinancials,
         room: normalizeRoom(item.room),
+        bookings: item.bookings.map((booking) => ({
+          ...booking,
+          clientStatus: getClientStatusForBooking(statuses.get(booking.user_id), booking.id),
+        })),
         firstBookingCount: item.bookings.filter((booking) =>
           showsFirstBookingIndicator(booking.status)
           && getClientStatusForBooking(statuses.get(booking.user_id), booking.id)?.isFirstVisit,

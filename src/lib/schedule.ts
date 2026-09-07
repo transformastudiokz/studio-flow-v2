@@ -22,6 +22,7 @@ export type ScheduleBooking = {
   id: string;
   status: BookingStatus | string;
   user_id: string;
+  subscription_id?: string | null;
   created_at?: string | null;
   user: ScheduleClient | null;
   clientStatus?: import("@/lib/client-status").ClientStatus;
@@ -76,15 +77,46 @@ export const scheduleStartHour = (iso: string) => parseISO(iso).getHours();
 export const occupiesPlace = (status: string) =>
   !["cancelled", "late_cancel", "absent"].includes(status);
 
+export const bookingHasPaidAccess = (booking: Pick<ScheduleBooking, "subscription_id" | "eligibility_subscription_id" | "access_type" | "clientStatus">) => {
+  if (booking.subscription_id || booking.eligibility_subscription_id) return true;
+  if (booking.access_type && booking.access_type !== "standard") return true;
+  const status = booking.clientStatus;
+  return Boolean(status?.hasCurrentTrial || status?.membership === "active" || status?.membership === "ending");
+};
+
+export const bookingOccupiesPlace = (booking: Pick<ScheduleBooking, "status" | "subscription_id" | "eligibility_subscription_id" | "access_type" | "clientStatus">) => {
+  if (!occupiesPlace(booking.status)) return false;
+  if (booking.status !== "booked") return true;
+  return bookingHasPaidAccess(booking);
+};
+
 export const showsFirstBookingIndicator = (status: string) =>
   !["cancelled", "late_cancel"].includes(status);
+
+export const DELETED_SESSION_REASON = "Удалено администратором";
+const DELETED_SESSION_REASONS = new Set([
+  DELETED_SESSION_REASON.toLocaleLowerCase("ru-RU"),
+  "убрали",
+]);
+
+export const isDeletedSession = (
+  session: Pick<ScheduleSession, "booking_status" | "booking_closed_reason" | "is_cancelled">,
+) =>
+  session.booking_status === "cancelled"
+  && session.is_cancelled === true
+  && DELETED_SESSION_REASONS.has((session.booking_closed_reason || "").trim().toLocaleLowerCase("ru-RU"));
 
 /** Cancelled bookings stay in history, but are not participants of the session. */
 export const showsInSessionParticipants = (status: string) =>
   !["cancelled", "late_cancel"].includes(status);
 
 export const activeBookings = (session: Pick<ScheduleSession, "bookings">) =>
-  (session.bookings || []).filter((booking) => occupiesPlace(booking.status));
+  (session.bookings || []).filter(bookingOccupiesPlace);
+
+export const queuedStudioBookings = (session: Pick<ScheduleSession, "bookings">) =>
+  (session.bookings || []).filter((booking) =>
+    showsInSessionParticipants(booking.status) && !bookingOccupiesPlace(booking),
+  );
 
 export const sessionBookingCount = (session: Pick<ScheduleSession, "bookings" | "onefit_bookings">) =>
   activeBookings(session).length + (session.onefit_bookings || []).filter((booking) => booking.is_active).length;

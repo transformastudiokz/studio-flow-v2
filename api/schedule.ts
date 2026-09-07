@@ -106,6 +106,26 @@ type ResolvedAccess = {
   accessType: WorkshopAccessType;
 };
 
+type OccupancyBooking = {
+  status: string;
+  subscription_id?: string | null;
+  eligibility_subscription_id?: string | null;
+  access_type?: string | null;
+};
+
+const bookingOccupiesPlace = (booking: OccupancyBooking) => {
+  if (["cancelled", "late_cancel", "absent"].includes(booking.status)) return false;
+  if (booking.status !== "booked") return true;
+  return Boolean(
+    booking.subscription_id
+    || booking.eligibility_subscription_id
+    || (booking.access_type && booking.access_type !== "standard"),
+  );
+};
+
+const resolvedAccessOccupiesPlace = (access: ResolvedAccess) =>
+  Boolean(access.subscriptionId || access.eligibilitySubscriptionId || access.accessType !== "standard");
+
 async function resolveBookingAccess(
   userId: string,
   session: SessionForAccess,
@@ -298,7 +318,7 @@ async function bookOwnSession(
   if (!adminClient) throw new Error("Серверный доступ Supabase не настроен");
   let { data: session, error: sessionError } = await adminClient
     .from("schedule_sessions")
-    .select("id,start_time,capacity,booking_status,is_cancelled,is_client_visible,session_kind,class_type:class_types(name),bookings:bookings(id,user_id,status),onefit_bookings:onefit_bookings(id,is_active)")
+    .select("id,start_time,capacity,booking_status,is_cancelled,is_client_visible,session_kind,class_type:class_types(name),bookings:bookings(id,user_id,status,subscription_id,eligibility_subscription_id,access_type),onefit_bookings:onefit_bookings(id,is_active)")
     .eq("id", sessionId)
     .maybeSingle();
   if (sessionError) throw sessionError;
@@ -309,7 +329,7 @@ async function bookOwnSession(
   if (!session && reference.startTime && reference.classTypeId) {
     let replacementQuery = adminClient
       .from("schedule_sessions")
-      .select("id,start_time,capacity,booking_status,is_cancelled,is_client_visible,session_kind,class_type:class_types(name),bookings:bookings(id,user_id,status),onefit_bookings:onefit_bookings(id,is_active)")
+      .select("id,start_time,capacity,booking_status,is_cancelled,is_client_visible,session_kind,class_type:class_types(name),bookings:bookings(id,user_id,status,subscription_id,eligibility_subscription_id,access_type),onefit_bookings:onefit_bookings(id,is_active)")
       .eq("start_time", reference.startTime)
       .eq("class_type_id", reference.classTypeId)
       .eq("is_client_visible", true)
@@ -341,11 +361,10 @@ async function bookOwnSession(
   if (activeStatuses.some((booking: { user_id: string }) => booking.user_id === userId)) {
     throw new Error("Ты уже записан на это занятие");
   }
-  const occupied = activeStatuses.length
-    + (session.onefit_bookings || []).filter((booking: { is_active: boolean }) => booking.is_active).length;
-  if (occupied >= Number(session.capacity)) throw new Error("К сожалению, места уже закончились");
-
   const access = await resolveBookingAccess(userId, session as SessionForAccess, requireStandardSubscription);
+  const occupied = (session.bookings || []).filter(bookingOccupiesPlace).length
+    + (session.onefit_bookings || []).filter((booking: { is_active: boolean }) => booking.is_active).length;
+  if (resolvedAccessOccupiesPlace(access) && occupied >= Number(session.capacity)) throw new Error("К сожалению, места уже закончились");
 
   const reusable = (session.bookings || []).find((booking: { user_id: string; status: string }) =>
     booking.user_id === userId && ["cancelled", "late_cancel", "absent"].includes(booking.status));
@@ -482,14 +501,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const { data: target, error: targetError } = await adminClient!
         .from("schedule_sessions")
-        .select("id,start_time,session_kind,capacity,booking_status,is_cancelled,class_type:class_types(name),bookings:bookings(id,status),onefit_bookings:onefit_bookings(id,is_active)")
+        .select("id,start_time,session_kind,capacity,booking_status,is_cancelled,class_type:class_types(name),bookings:bookings(id,status,subscription_id,eligibility_subscription_id,access_type),onefit_bookings:onefit_bookings(id,is_active)")
         .eq("id", targetSessionId)
         .single();
       if (targetError || !target) throw targetError || new Error("Новое занятие не найдено");
       if (target.booking_status !== "open" || target.is_cancelled) return res.status(409).json({ error: "Запись на выбранное занятие закрыта" });
-      const occupied = (target.bookings || []).filter((booking: { status: string }) => !["cancelled", "late_cancel", "absent"].includes(booking.status)).length
+      const targetAccess = await resolveBookingAccess(source.user_id, target as SessionForAccess, false);
+
+      const occupied = (target.bookings || []).filter(bookingOccupiesPlace).length
         + (target.onefit_bookings || []).filter((booking: { is_active: boolean }) => booking.is_active).length;
-      if (occupied >= target.capacity) return res.status(409).json({ error: "На выбранном занятии уже нет свободных мест" });
+      if (resolvedAccessOccupiesPlace(targetAccess) && occupied >= target.capacity) return res.status(409).json({ error: "На выбранном занятии уже нет свободных мест" });
 
       const { data: duplicates, error: duplicateError } = await adminClient!
         .from("bookings")
@@ -500,8 +521,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .limit(1);
       if (duplicateError) throw duplicateError;
       if (duplicates?.length) return res.status(409).json({ error: "Клиент уже записан на выбранное занятие" });
-
-      const targetAccess = await resolveBookingAccess(source.user_id, target as SessionForAccess, false);
 
       const { error: cancelError } = await adminClient!.from("bookings").update({ status: "cancelled" }).eq("id", source.id);
       if (cancelError) throw cancelError;
