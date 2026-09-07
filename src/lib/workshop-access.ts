@@ -39,8 +39,8 @@ export const isPaidWorkshopPass = (subscription: WorkshopSubscription) =>
   subscription.plan?.product_kind === "workshop";
 
 export const workshopAccessLabel = (accessType?: string | null) => {
+  if (accessType === "workshop_complimentary") return "Допущен администратором";
   if (accessType === "workshop_member_free") return "Бесплатно";
   if (accessType === "workshop_paid") return "Оплачено · 6 000 ₸";
-  if (accessType === "workshop_complimentary") return "Комплимент студии";
   return null;
 };

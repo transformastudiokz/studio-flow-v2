@@ -11,6 +11,7 @@ import { fetchClientStatuses, getClientStatusForBooking, type ClientStatus } fro
 import {
   normalizePhone,
   normalizeRoom,
+  bookingHasPaidAccess,
   bookingOccupiesPlace,
   occupiesPlace,
   showsInSessionParticipants,
@@ -206,6 +207,28 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
     }),
   });
 
+  const promoteToMain = useMutation({
+    mutationFn: async ({ bookingId, reason }: { bookingId: string; reason: string }) => {
+      await requestScheduleApi({ action: "promote-unpaid-booking", bookingId, reason });
+    },
+    onSuccess: () => {
+      refresh();
+      toast.success("Клиент перенесён в основную запись");
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const returnToQueue = useMutation({
+    mutationFn: async ({ bookingId, reason }: { bookingId: string; reason: string }) => {
+      await requestScheduleApi({ action: "return-admin-admitted-booking-to-waitlist", bookingId, reason });
+    },
+    onSuccess: () => {
+      refresh();
+      toast.success("Клиент возвращён в очередь");
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
   const removeBooking = useMutation({
     mutationFn: async (bookingId: string) => {
       await updateBookingStatus(bookingId, "cancelled");
@@ -331,37 +354,46 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
     const client = booking.user;
     const displayStatus = booking.isTransferred ? "transferred" : booking.status;
     const status = attendanceStatus[displayStatus as keyof typeof attendanceStatus] || attendanceStatus.booked;
+    const accessLabel = workshopAccessLabel(booking.access_type);
+    const canPromote = queue && booking.status === "booked" && !bookingHasPaidAccess(booking);
+    const canReturnToQueue = !queue && booking.status === "booked" && !booking.subscription_id && !booking.eligibility_subscription_id && booking.access_type === "workshop_complimentary";
     return (
       <div key={booking.id} className={cn("grid min-h-11 grid-cols-[48px_minmax(0,1fr)_44px] items-center gap-x-2 px-4 py-1 sm:min-h-9 sm:grid-cols-[48px_minmax(0,1fr)_40px_136px_40px] sm:py-0", queue && "bg-amber-50/35")}>
         <ClientStatusIndicators status={booking.clientStatus} reserveSpace />
         <div className="min-w-0 flex-1">
           {client ? <Link to={`/clients/${client.id}`} className="block truncate text-[12px] font-semibold leading-3.5 hover:text-primary hover:underline sm:text-[12px]">{client.first_name} {client.last_name || ""}</Link> : <span className="text-[12px] font-semibold">Неизвестный клиент</span>}
-          <p className="truncate text-[10px] leading-3.5 text-muted-foreground">{client?.phone || "Телефон не указан"}</p>
-          {queue ? <p className="truncate text-[10px] font-semibold leading-3.5 text-amber-700">Нет оплаченного доступа · место не занимает</p> : null}
-          {workshopAccessLabel(booking.access_type) ? <p className={`truncate text-[10px] font-semibold leading-3.5 ${booking.access_type === "workshop_paid" ? "text-emerald-700" : "text-[#745f3c]"}`}>{workshopAccessLabel(booking.access_type)}</p> : null}
+          <p className="truncate text-[10px] leading-3.5 text-muted-foreground">
+            {client?.phone || "Телефон не указан"}
+            {queue ? <span className="ml-2 text-[9px] font-semibold text-amber-700">без оплаты</span> : null}
+          </p>
+          {accessLabel ? <p className={`truncate text-[10px] font-semibold leading-3.5 ${booking.access_type === "workshop_paid" ? "text-emerald-700" : "text-[#745f3c]"}`}>{accessLabel}</p> : null}
         </div>
         <Button size="icon" variant="ghost" className="hidden h-8 w-8 justify-self-center text-green-600 sm:inline-flex" aria-label={`Написать ${client?.first_name || "клиенту"} в WhatsApp`} title="Написать в WhatsApp" onClick={() => openWhatsApp(client)} disabled={!client?.phone}><MessageCircle className="h-4 w-4" /></Button>
-        {queue ? (
-          <span aria-label={`Статус записи: ${client?.first_name || "клиент"} в очереди`} className="col-span-2 col-start-2 row-start-2 mt-1 inline-flex h-11 w-full items-center justify-center justify-self-center rounded-lg border border-amber-200 bg-amber-50 px-2 text-center text-xs font-semibold text-amber-700 sm:col-span-1 sm:col-start-4 sm:row-start-1 sm:mt-0 sm:h-7 sm:w-[136px]">
-            В очереди
-          </span>
-        ) : (
-          <Select value={displayStatus} disabled={pendingStatusIds.has(booking.id) || booking.isTransferred} onValueChange={(value) => {
-            if (value === "transferred") {
-              setTransferBooking(booking);
-              setTargetSessionId("");
-              return;
-            }
-            updateStatus.mutate({ id: booking.id, status: value });
-          }}>
-            <SelectTrigger aria-label={`Статус посещения: ${client?.first_name || "клиент"}`} className={`col-span-2 col-start-2 row-start-2 mt-1 h-11 w-full justify-self-center text-[11px] font-semibold sm:col-span-1 sm:col-start-4 sm:row-start-1 sm:mt-0 sm:h-7 sm:w-[136px] ${status.className}`}><SelectValue /></SelectTrigger>
-            <SelectContent><SelectItem value="booked">Записан</SelectItem><SelectItem value="completed">Пришёл</SelectItem><SelectItem value="absent">Не пришёл</SelectItem><SelectItem value="transferred">Перенос</SelectItem><SelectItem value="cancelled">Отмена</SelectItem><SelectItem value="late_cancel">Поздняя отмена</SelectItem></SelectContent>
-          </Select>
-        )}
+        <Select value={displayStatus} disabled={pendingStatusIds.has(booking.id) || booking.isTransferred} onValueChange={(value) => {
+          if (value === "transferred") {
+            setTransferBooking(booking);
+            setTargetSessionId("");
+            return;
+          }
+          updateStatus.mutate({ id: booking.id, status: value });
+        }}>
+          <SelectTrigger aria-label={`Статус посещения: ${client?.first_name || "клиент"}`} className={`col-span-2 col-start-2 row-start-2 mt-1 h-11 w-full justify-self-center text-[11px] font-semibold sm:col-span-1 sm:col-start-4 sm:row-start-1 sm:mt-0 sm:h-7 sm:w-[136px] ${status.className}`}><SelectValue /></SelectTrigger>
+          <SelectContent><SelectItem value="booked">Записан</SelectItem><SelectItem value="completed">Пришёл</SelectItem><SelectItem value="absent">Не пришёл</SelectItem><SelectItem value="transferred">Перенос</SelectItem><SelectItem value="cancelled">Отмена</SelectItem><SelectItem value="late_cancel">Поздняя отмена</SelectItem></SelectContent>
+        </Select>
         <DropdownMenu>
           <DropdownMenuTrigger asChild><Button size="icon" variant="ghost" className="col-start-3 row-start-1 h-11 w-11 justify-self-center sm:col-start-5 sm:h-8 sm:w-8" aria-label={`Действия с записью: ${client?.first_name || "клиент"}`}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem className="sm:hidden" disabled={!client?.phone} onClick={() => openWhatsApp(client)}><MessageCircle className="mr-2 h-4 w-4" />Написать в WhatsApp</DropdownMenuItem>
+            {queue ? <DropdownMenuItem disabled={promoteToMain.isPending || !canPromote} onClick={() => {
+              const reason = window.prompt("Причина допуска без оплаты", "Допущен администратором");
+              if (reason === null) return;
+              promoteToMain.mutate({ bookingId: booking.id, reason });
+            }}>В основную запись</DropdownMenuItem> : null}
+            {canReturnToQueue ? <DropdownMenuItem disabled={returnToQueue.isPending} onClick={() => {
+              const reason = window.prompt("Причина возврата в очередь", "Возвращён в очередь");
+              if (reason === null) return;
+              returnToQueue.mutate({ bookingId: booking.id, reason });
+            }}>Вернуть в очередь</DropdownMenuItem> : null}
             <DropdownMenuItem className="text-red-600" onClick={() => setDeleteBooking(booking)}><Trash2 className="mr-2 h-4 w-4" />Удалить запись</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

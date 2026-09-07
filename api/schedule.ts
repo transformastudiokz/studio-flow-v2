@@ -271,6 +271,98 @@ async function setBookingAttendanceStatus(bookingId: string, nextStatus: string)
   return { bookingId, subscriptionId: targetSubscriptionId };
 }
 
+async function promoteUnpaidBookingToMain(bookingId: string, staffId: string, reason: string) {
+  if (!adminClient) throw new Error("Серверный доступ Supabase не настроен");
+  const { data: booking, error: bookingError } = await adminClient
+    .from("bookings")
+    .select("id,user_id,session_id,status,subscription_id,eligibility_subscription_id,access_type,session:schedule_sessions(id,capacity,booking_status,is_cancelled,bookings:bookings(id,status,subscription_id,eligibility_subscription_id,access_type),onefit_bookings:onefit_bookings(id,is_active))")
+    .eq("id", bookingId)
+    .single();
+  if (bookingError || !booking) throw bookingError || new Error("Запись не найдена");
+  if (booking.status !== "booked") throw new Error("В основную запись можно перенести только действующую запись со статусом «Записан»");
+  if (bookingOccupiesPlace(booking)) return { bookingId, alreadyMain: true };
+
+  const session = Array.isArray(booking.session) ? booking.session[0] : booking.session;
+  if (!session) throw new Error("Занятие не найдено");
+  if (session.booking_status !== "open" || session.is_cancelled) throw new Error("Запись на это занятие закрыта");
+
+  const occupied = (session.bookings || [])
+    .filter((item: OccupancyBooking & { id?: string }) => item.id !== booking.id)
+    .filter(bookingOccupiesPlace).length
+    + (session.onefit_bookings || []).filter((item: { is_active: boolean }) => item.is_active).length;
+  if (occupied >= Number(session.capacity)) throw new Error("Свободных мест нет — клиент останется в очереди");
+
+  const { data: updatedBooking, error: updateError } = await adminClient
+    .from("bookings")
+    .update({
+      subscription_id: null,
+      eligibility_subscription_id: null,
+      access_type: "workshop_complimentary",
+    })
+    .eq("id", booking.id)
+    .eq("status", "booked")
+    .select("id")
+    .maybeSingle();
+  if (updateError || !updatedBooking) throw updateError || new Error("Запись уже изменилась. Обнови окно.");
+
+  const { error: logError } = await adminClient.from("booking_change_log").insert({
+    booking_id: booking.id,
+    session_id: booking.session_id,
+    user_id: booking.user_id,
+    action: "updated",
+    changed_by: staffId,
+    old_data: { access_type: booking.access_type, subscription_id: booking.subscription_id, eligibility_subscription_id: booking.eligibility_subscription_id },
+    new_data: {
+      event_type: "promoted_from_waitlist",
+      access_type: "workshop_complimentary",
+      reason: reason.trim() || "Допущен администратором",
+    },
+  });
+  if (logError) console.error("Waitlist promotion history log failed", logError);
+
+  return { bookingId, promoted: true };
+}
+
+async function returnAdminAdmittedBookingToWaitlist(bookingId: string, staffId: string, reason: string) {
+  if (!adminClient) throw new Error("Серверный доступ Supabase не настроен");
+  const { data: booking, error: bookingError } = await adminClient
+    .from("bookings")
+    .select("id,user_id,session_id,status,subscription_id,eligibility_subscription_id,access_type")
+    .eq("id", bookingId)
+    .single();
+  if (bookingError || !booking) throw bookingError || new Error("Запись не найдена");
+  if (booking.status !== "booked") throw new Error("В очередь можно вернуть только запись со статусом «Записан»");
+  if (booking.subscription_id || booking.eligibility_subscription_id || booking.access_type !== "workshop_complimentary") {
+    throw new Error("В очередь можно вернуть только ручной допуск без оплаты");
+  }
+
+  const { data: updatedBooking, error: updateError } = await adminClient
+    .from("bookings")
+    .update({ access_type: "standard" })
+    .eq("id", booking.id)
+    .eq("status", "booked")
+    .select("id")
+    .maybeSingle();
+  if (updateError || !updatedBooking) throw updateError || new Error("Запись уже изменилась. Обнови окно.");
+
+  const { error: logError } = await adminClient.from("booking_change_log").insert({
+    booking_id: booking.id,
+    session_id: booking.session_id,
+    user_id: booking.user_id,
+    action: "updated",
+    changed_by: staffId,
+    old_data: { access_type: booking.access_type },
+    new_data: {
+      event_type: "returned_to_waitlist",
+      access_type: "standard",
+      reason: reason.trim() || "Возвращён в очередь",
+    },
+  });
+  if (logError) console.error("Waitlist return history log failed", logError);
+
+  return { bookingId, returned: true };
+}
+
 async function cancelOwnBooking(userId: string, bookingId: string) {
   if (!adminClient) throw new Error("Серверный доступ Supabase не настроен");
   const { data: booking, error } = await adminClient.from("bookings")
@@ -421,6 +513,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const allowed = ["booked", "completed", "absent", "cancelled", "late_cancel", "transferred"];
       if (!bookingId || !allowed.includes(status)) return res.status(400).json({ error: "Некорректный статус записи" });
       return res.status(200).json(await setBookingAttendanceStatus(bookingId, status));
+    }
+    if (action === "promote-unpaid-booking") {
+      const bookingId = String(req.body?.bookingId || "");
+      const reason = String(req.body?.reason || "").trim();
+      if (!bookingId) return res.status(400).json({ error: "Запись не указана" });
+      return res.status(200).json(await promoteUnpaidBookingToMain(bookingId, staff.id, reason));
+    }
+    if (action === "return-admin-admitted-booking-to-waitlist") {
+      const bookingId = String(req.body?.bookingId || "");
+      const reason = String(req.body?.reason || "").trim();
+      if (!bookingId) return res.status(400).json({ error: "Запись не указана" });
+      return res.status(200).json(await returnAdminAdmittedBookingToWaitlist(bookingId, staff.id, reason));
     }
     if (action === "request-onefit-sync") {
       const sourceDate = new Intl.DateTimeFormat("en-CA", {
