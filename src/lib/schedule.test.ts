@@ -75,7 +75,8 @@ describe("schedule business rules", () => {
   });
 
   it("shows the coach name with the surname initial in compact cards", () => {
-    expect(formatCoachShortName("Нурханова Тумар Максатовна")).toBe("Тумар Н.");
+    expect(formatCoachShortName("Тумар Нурханова Максатовна")).toBe("Тумар Н.");
+    expect(formatCoachShortName("Маржан Мухитова")).toBe("Маржан М.");
     expect(formatCoachShortName("Ажар")).toBe("Ажар");
     expect(formatCoachShortName(null)).toBe("Без тренера");
   });

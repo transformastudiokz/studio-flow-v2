@@ -423,10 +423,20 @@ const ClientSchedule = () => {
                                 {pendingSessionId === session.id ? <Loader2 className="w-3 h-3 animate-spin" /> : "Записаться"}
                                 </Button>
                             )}
-                            <span className={cn(
-                              "flex h-9 min-w-[5.25rem] items-center justify-center whitespace-nowrap rounded-xl border border-[#d8d9d4] bg-[#e8e9e5] px-3 text-xs font-semibold text-[#555d56]",
-                            )}>
-                              {isFull ? "Нет мест" : `${session.seats_left} свободно`}
+                            <span
+                              className={cn(
+                                "flex h-9 min-w-[6.75rem] items-center justify-center gap-1 whitespace-nowrap rounded-xl border border-[#d8d9d4] bg-[#e8e9e5] px-3 text-xs font-semibold text-[#555d56]",
+                              )}
+                              aria-label={isFull ? "Нет мест" : `${session.seats_left} свободно`}
+                            >
+                              {isFull ? (
+                                "Нет мест"
+                              ) : (
+                                <>
+                                  <span className="tabular-nums">{session.seats_left}</span>
+                                  <span>свободно</span>
+                                </>
+                              )}
                             </span>
                         </div>
                       </div>

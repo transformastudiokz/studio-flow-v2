@@ -52,6 +52,15 @@ body {
     @apply bg-background text-foreground font-sans;
     -webkit-text-size-adjust: 100%;
   }
+
+  a[x-apple-data-detectors],
+  a[x-apple-data-detectors] *,
+  .client-portal a[x-apple-data-detectors],
+  .client-portal a[x-apple-data-detectors] * {
+    color: inherit !important;
+    cursor: inherit !important;
+    text-decoration: none !important;
+  }
 }
 
 @layer components {
