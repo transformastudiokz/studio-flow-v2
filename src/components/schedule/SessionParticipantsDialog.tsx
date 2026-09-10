@@ -50,7 +50,8 @@ const onefitStatus = {
 type ClientOption = ScheduleClient & { clientStatus?: ClientStatus };
 
 type TransferSession = Pick<ScheduleSession, "id" | "start_time" | "end_time" | "capacity" | "room" | "booking_status" | "class_type" | "coach"> & {
-  bookings: Array<{ status: string }>;
+  bookings: Array<Pick<ScheduleSession["bookings"][number], "status" | "subscription_id" | "eligibility_subscription_id" | "access_type">>;
+  onefit_bookings?: Array<{ is_active: boolean }>;
 };
 
 type Props = {
@@ -162,7 +163,8 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
           id, start_time, end_time, capacity, room, booking_status,
           class_type:class_types(id,name,color,duration_min),
           coach:coaches(id,name),
-          bookings:bookings(status)
+          bookings:bookings(status,subscription_id,eligibility_subscription_id,access_type),
+          onefit_bookings:onefit_bookings(is_active)
         `)
         .neq("id", session!.id)
         .eq("booking_status", "open")
@@ -260,7 +262,8 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
       if (!transferBooking || !targetSessionId) throw new Error("Выбери занятие для переноса");
       const target = transferSessions.find((candidate) => candidate.id === targetSessionId);
       if (!target) throw new Error("Занятие не найдено");
-      const occupiedTarget = target.bookings.filter((booking) => occupiesPlace(booking.status)).length;
+      const occupiedTarget = target.bookings.filter(bookingOccupiesPlace).length
+        + (target.onefit_bookings || []).filter((booking) => booking.is_active).length;
       if (occupiedTarget >= target.capacity) throw new Error("На выбранном занятии уже нет свободных мест");
       await requestScheduleApi({
         action: "transfer-booking",
@@ -542,7 +545,7 @@ export function SessionParticipantsDialog({ session, open, onOpenChange, onEdit 
           <DialogHeader><DialogTitle>Перенести запись</DialogTitle><DialogDescription>Исходная запись {transferBooking?.user ? `${transferBooking.user.first_name || ""} ${transferBooking.user.last_name || ""}`.trim() : "клиента"} останется в истории, а на выбранное занятие будет создана новая.</DialogDescription></DialogHeader>
           <div className="space-y-4">
             {transferSessionsLoading ? <div className="flex justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div> : transferSessions.length === 0 ? <div className="rounded-lg bg-muted p-5 text-center text-sm text-muted-foreground">В ближайшие 60 дней нет доступных занятий</div> : (
-              <div className="space-y-2"><Label>Новое занятие</Label><Select value={targetSessionId} onValueChange={setTargetSessionId}><SelectTrigger><SelectValue placeholder="Выбери дату и занятие" /></SelectTrigger><SelectContent className="max-h-72">{transferSessions.map((candidate) => { const candidateOccupied = candidate.bookings.filter((booking) => occupiesPlace(booking.status)).length; const isFull = candidateOccupied >= candidate.capacity; return <SelectItem key={candidate.id} value={candidate.id} disabled={isFull}>{format(parseISO(candidate.start_time), "EEE, dd MMM · HH:mm", { locale: ru })} — {candidate.class_type?.name || "Занятие"} · {normalizeRoom(candidate.room)} · {candidateOccupied}/{candidate.capacity}{isFull ? " · мест нет" : ""}</SelectItem>; })}</SelectContent></Select></div>
+              <div className="space-y-2"><Label>Новое занятие</Label><Select value={targetSessionId} onValueChange={setTargetSessionId}><SelectTrigger><SelectValue placeholder="Выбери дату и занятие" /></SelectTrigger><SelectContent className="max-h-72">{transferSessions.map((candidate) => { const candidateOccupied = candidate.bookings.filter(bookingOccupiesPlace).length + (candidate.onefit_bookings || []).filter((booking) => booking.is_active).length; const isFull = candidateOccupied >= candidate.capacity; return <SelectItem key={candidate.id} value={candidate.id} disabled={isFull}>{format(parseISO(candidate.start_time), "EEE, dd MMM · HH:mm", { locale: ru })} — {candidate.class_type?.name || "Занятие"} · {normalizeRoom(candidate.room)} · {candidateOccupied}/{candidate.capacity}{isFull ? " · мест нет" : ""}</SelectItem>; })}</SelectContent></Select></div>
             )}
             <Button className="w-full" onClick={() => moveBooking.mutate()} disabled={!targetSessionId || moveBooking.isPending}>{moveBooking.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CalendarSync className="mr-2 h-4 w-4" />}Перенести</Button>
           </div>

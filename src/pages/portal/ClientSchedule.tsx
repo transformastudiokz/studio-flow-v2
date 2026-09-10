@@ -129,7 +129,13 @@ const ClientSchedule = () => {
 
       if (oneFitError) throw oneFitError;
 
-      const occupancyBySession = new Map(
+      type SessionOccupancy = {
+        crm: number;
+        onefit: number;
+        total: number;
+      };
+
+      const occupancyBySession = new Map<string, SessionOccupancy>(
         (oneFitCounts || []).map((row: any) => [row.session_id, {
           crm: Number(row.crm_bookings_count) || 0,
           onefit: Number(row.onefit_bookings_count) || 0,

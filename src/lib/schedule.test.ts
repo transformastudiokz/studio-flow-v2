@@ -9,6 +9,7 @@ import {
   scheduleStartHour,
   showsInSessionParticipants,
   showsFirstBookingIndicator,
+  sessionBookingCount,
   sessionConflict,
   sessionsOverlap,
 } from "./schedule";
@@ -48,6 +49,20 @@ describe("schedule business rules", () => {
     expect(bookingOccupiesPlace({ status: "booked", subscription_id: "subscription-1", eligibility_subscription_id: null, access_type: "standard" })).toBe(true);
     expect(bookingOccupiesPlace({ status: "booked", subscription_id: null, eligibility_subscription_id: null, access_type: "workshop_paid" })).toBe(true);
     expect(bookingOccupiesPlace({ status: "completed", subscription_id: null, eligibility_subscription_id: null, access_type: "standard" })).toBe(true);
+  });
+
+  it("keeps waitlist clients out of the session occupancy count", () => {
+    expect(sessionBookingCount({
+      bookings: [
+        { id: "booking-1", user_id: "user-1", user: null, status: "booked", subscription_id: "subscription-1", eligibility_subscription_id: null, access_type: "standard" },
+        { id: "booking-2", user_id: "user-2", user: null, status: "booked", subscription_id: null, eligibility_subscription_id: null, access_type: "standard" },
+        { id: "booking-3", user_id: "user-3", user: null, status: "absent", subscription_id: "subscription-2", eligibility_subscription_id: null, access_type: "standard" },
+      ],
+      onefit_bookings: [
+        { id: "onefit-1", client_name: "OneFit Active", source_status: "queued", is_active: true },
+        { id: "onefit-2", client_name: "OneFit Cancelled", source_status: "cancelled", is_active: false },
+      ],
+    })).toBe(2);
   });
 
   it("shows first-booking stars for attendance outcomes but not cancellations", () => {
