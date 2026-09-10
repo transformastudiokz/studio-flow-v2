@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/table";
 import { Plus, Edit, Trash2, Search } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { getClassTypeImageUrl } from "@/lib/class-type-assets";
 
 export default function ClassTypes() {
   const [isOpen, setIsOpen] = useState(false);
@@ -176,6 +177,7 @@ export default function ClassTypes() {
           <TableHeader>
             <TableRow>
               <TableHead>Название</TableHead>
+              <TableHead>Фото</TableHead>
               <TableHead>Описание</TableHead>
               <TableHead>Длительность</TableHead>
               <TableHead className="text-right">Действия</TableHead>
@@ -184,29 +186,41 @@ export default function ClassTypes() {
           <TableBody>
             {filteredTypes.length === 0 && (
               <TableRow>
-                <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
                   Нет типов занятий по выбранным фильтрам
                 </TableCell>
               </TableRow>
             )}
-            {filteredTypes.map((type: any) => (
-              <TableRow key={type.id}>
-                <TableCell className="font-medium flex items-center gap-2">
-                  <div className="w-4 h-4 rounded-full" style={{ backgroundColor: type.color }} />
-                  {type.name}
-                </TableCell>
-                <TableCell>{type.description}</TableCell>
-                <TableCell>{type.duration_min} мин</TableCell>
-                <TableCell className="text-right">
-                  <Button variant="ghost" size="icon" onClick={() => openEdit(type)}>
-                    <Edit className="h-4 w-4 text-blue-500" />
-                  </Button>
-                  <Button variant="ghost" size="icon" onClick={() => handleDelete(type.id)}>
-                    <Trash2 className="h-4 w-4 text-red-500" />
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
+            {filteredTypes.map((type: any) => {
+              const imageUrl = getClassTypeImageUrl(type.name);
+              return (
+                <TableRow key={type.id}>
+                  <TableCell className="font-medium">
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 rounded-full" style={{ backgroundColor: type.color }} />
+                      {type.name}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    {imageUrl ? (
+                      <img src={imageUrl} alt={type.name} className="h-12 w-16 rounded-md object-cover" />
+                    ) : (
+                      <span className="text-xs text-muted-foreground">Не задано</span>
+                    )}
+                  </TableCell>
+                  <TableCell>{type.description}</TableCell>
+                  <TableCell>{type.duration_min} мин</TableCell>
+                  <TableCell className="text-right">
+                    <Button variant="ghost" size="icon" onClick={() => openEdit(type)}>
+                      <Edit className="h-4 w-4 text-blue-500" />
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={() => handleDelete(type.id)}>
+                      <Trash2 className="h-4 w-4 text-red-500" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </div>

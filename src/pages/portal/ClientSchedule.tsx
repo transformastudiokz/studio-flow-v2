@@ -18,6 +18,7 @@ import { ru } from "date-fns/locale";
 import { Loader2, User, Check, Clock, ChevronLeft, ChevronRight, XCircle, Info } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { getClassTypeImageUrl } from "@/lib/class-type-assets";
 import { occupiesPlace } from "@/lib/schedule";
 import { formatCoachShortName } from "@/lib/schedule";
 import {
@@ -47,6 +48,15 @@ const ClientSchedule = () => {
   const [weekOffset, setWeekOffset] = useState(0);
   const [selectedClassInfo, setSelectedClassInfo] = useState<any>(null); // Для модалки инфо
   const [pendingSessionId, setPendingSessionId] = useState<string | null>(null);
+
+  const openClassInfo = (session: any) => {
+    const classType = session.class_type || {};
+    setSelectedClassInfo({
+      ...classType,
+      description: session.public_description || classType.description,
+      imageUrl: getClassTypeImageUrl(classType.name),
+    });
+  };
 
   // Вычисляем дни для текущей недели
   const weekStart = startOfWeek(addWeeks(new Date(), weekOffset), { weekStartsOn: 1 });
@@ -334,7 +344,7 @@ const ClientSchedule = () => {
                 <Card 
                     key={session.id} 
                     className={cn("client-surface client-focus overflow-hidden border-[#ded9cf] bg-[#fffefb] shadow-[0_5px_18px_rgba(48,58,51,0.07)] transition-shadow hover:shadow-[0_7px_22px_rgba(48,58,51,0.1)]", session.booking_status === 'cancelled' ? "bg-[#ece8df] text-slate-600" : session.booking_status === 'closed' ? "bg-[#f5f3ef]" : "")}
-                    onClick={() => setSelectedClassInfo({ ...session.class_type, description: session.public_description || session.class_type?.description })} // ОТКРЫВАЕМ ИНФО
+                    onClick={() => openClassInfo(session)}
                 >
                   <div className="grid min-w-0 grid-cols-[4.25rem_minmax(0,1fr)] gap-x-3 p-3.5 min-[420px]:grid-cols-[4.75rem_minmax(0,1fr)] min-[420px]:gap-x-4">
                       <div className="flex min-w-0 flex-col items-start">
@@ -350,7 +360,7 @@ const ClientSchedule = () => {
                       </div>
 
                       <div className="min-w-0">
-                        <button type="button" className="client-focus block w-full min-w-0 text-left" onClick={() => setSelectedClassInfo({ ...session.class_type, description: session.public_description || session.class_type?.description })}>
+                        <button type="button" className="client-focus block w-full min-w-0 text-left" onClick={() => openClassInfo(session)}>
                           <h3 className="line-clamp-2 break-words text-sm font-bold leading-[1.22] text-[#202721]" title={session.class_type?.name || ""}>
                             {session.class_type?.name}
                           </h3>
@@ -361,7 +371,7 @@ const ClientSchedule = () => {
                         </p>
                         {session.room ? <p className="mt-0.5 truncate text-xs text-[#858880]">{session.room}</p> : null}
                         {session.booking_status !== 'open' && <p className="mt-1 text-[11px] font-semibold text-[#6f706b]">{session.booking_status === 'cancelled' ? "Занятие отменено" : "Запись закрыта"}{session.booking_closed_reason ? ` · ${session.booking_closed_reason}` : ""}</p>}
-                        {/мастер[\s-]*класс/i.test(session.class_type?.name || "") ? <button type="button" className="client-focus mt-2 inline-flex items-center gap-1.5 rounded-lg bg-[#f5efe2] px-2.5 py-1.5 text-[11px] font-semibold text-[#745f3c]" onClick={(event) => { event.stopPropagation(); setSelectedClassInfo({ ...session.class_type, description: session.public_description || session.class_type?.description }); }}><Info className="h-3.5 w-3.5" />Подробнее о мастер-классе</button> : null}
+                        {/мастер[\s-]*класс/i.test(session.class_type?.name || "") ? <button type="button" className="client-focus mt-2 inline-flex items-center gap-1.5 rounded-lg bg-[#f5efe2] px-2.5 py-1.5 text-[11px] font-semibold text-[#745f3c]" onClick={(event) => { event.stopPropagation(); openClassInfo(session); }}><Info className="h-3.5 w-3.5" />Подробнее о мастер-классе</button> : null}
                         {workshop ? <div className={`mt-2 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold ${session.workshop_access === 'none' && !session.is_booked_by_me ? 'bg-[#f7ebe6] text-[#8e5846]' : 'bg-[#f5efe2] text-[#745f3c]'}`}>{workshopAccessText}</div> : null}
 
                         <div className="mt-3 grid min-w-0 grid-cols-1 gap-2 min-[360px]:grid-cols-[minmax(0,1fr)_auto]" onClick={(e) => e.stopPropagation()}>
@@ -429,16 +439,27 @@ const ClientSchedule = () => {
 
         {/* МОДАЛЬНОЕ ОКНО С ИНФОРМАЦИЕЙ О ЗАНЯТИИ */}
         <Dialog open={!!selectedClassInfo} onOpenChange={(open) => !open && setSelectedClassInfo(null)}>
-            <DialogContent className="max-w-xs sm:max-w-md rounded-2xl">
+            <DialogContent className="max-w-xs overflow-hidden rounded-2xl p-0 sm:max-w-md">
+                {selectedClassInfo?.imageUrl ? (
+                  <div className="aspect-[4/3] w-full overflow-hidden bg-[#f5f3ef]">
+                    <img
+                      src={selectedClassInfo.imageUrl}
+                      alt={`${selectedClassInfo?.name || "Занятие"} в VEYA`}
+                      className="h-full w-full object-cover"
+                    />
+                  </div>
+                ) : null}
+
+                <div className="space-y-4 p-5">
                 <DialogHeader>
-                    <DialogTitle className="text-xl font-bold flex items-center gap-2">
+                    <DialogTitle className="flex items-center gap-2 text-xl font-bold leading-tight">
                         <div className="w-4 h-4 rounded-full shrink-0" style={{ backgroundColor: selectedClassInfo?.color || '#ccc' }} />
                         {selectedClassInfo?.name}
                     </DialogTitle>
                     {/* <DialogDescription>Информация о занятии</DialogDescription> */}
                 </DialogHeader>
                 
-                <ScrollArea className="max-h-[50vh] pr-2">
+                <ScrollArea className={cn("pr-2", selectedClassInfo?.imageUrl ? "max-h-[34vh]" : "max-h-[50vh]")}>
                     <div className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">
                         {selectedClassInfo?.description || "Описание занятия отсутствует."}
                     </div>
@@ -449,6 +470,7 @@ const ClientSchedule = () => {
                         Понятно
                     </Button>
                 </DialogFooter>
+                </div>
             </DialogContent>
         </Dialog>
 

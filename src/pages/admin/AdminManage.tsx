@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Plus, Edit, Trash2, Loader2, Phone } from "lucide-react";
 import { toast } from "sonner";
+import { getClassTypeImageUrl } from "@/lib/class-type-assets";
 
 // ─── CLASS TYPES ────────────────────────────────────────────────────────────
 
@@ -99,25 +100,35 @@ function ClassTypesTab() {
         </div>
       ) : (
         <div className="space-y-2">
-          {types.map((t: any) => (
-            <div key={t.id} className="bg-white border border-gray-100 rounded-2xl p-3 shadow-sm flex items-center gap-3">
-              <div className="w-4 h-4 rounded-full shrink-0" style={{ backgroundColor: t.color }} />
-              <div className="flex-1 min-w-0">
-                <p className="font-medium text-sm truncate">{t.name}</p>
-                <p className="text-xs text-muted-foreground">{t.duration_min} мин</p>
+          {types.map((t: any) => {
+            const imageUrl = getClassTypeImageUrl(t.name);
+            return (
+              <div key={t.id} className="bg-white border border-gray-100 rounded-2xl p-3 shadow-sm flex items-center gap-3">
+                {imageUrl ? (
+                  <img src={imageUrl} alt={t.name} className="h-12 w-16 shrink-0 rounded-md object-cover" />
+                ) : (
+                  <div className="flex h-12 w-16 shrink-0 items-center justify-center rounded-md bg-muted text-[10px] text-muted-foreground">
+                    нет фото
+                  </div>
+                )}
+                <div className="w-4 h-4 rounded-full shrink-0" style={{ backgroundColor: t.color }} />
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-sm truncate">{t.name}</p>
+                  <p className="text-xs text-muted-foreground">{t.duration_min} мин</p>
+                </div>
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-500" onClick={() => openEdit(t)}>
+                  <Edit className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant="ghost" size="icon" className="h-8 w-8 text-red-400"
+                  disabled={deleteMutation.isPending}
+                  onClick={() => { if (confirm("Удалить?")) deleteMutation.mutate(t.id); }}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
               </div>
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-500" onClick={() => openEdit(t)}>
-                <Edit className="w-4 h-4" />
-              </Button>
-              <Button
-                variant="ghost" size="icon" className="h-8 w-8 text-red-400"
-                disabled={deleteMutation.isPending}
-                onClick={() => { if (confirm("Удалить?")) deleteMutation.mutate(t.id); }}
-              >
-                <Trash2 className="w-4 h-4" />
-              </Button>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
