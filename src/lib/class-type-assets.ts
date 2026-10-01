@@ -11,6 +11,7 @@ const CLASS_TYPE_IMAGE_BY_NAME: Record<string, string> = {
   "виньяса": "/class-types/05-yoga-vinyasa.jpg",
   "йога: для беременных": "/class-types/06-yoga-prenatal.jpg",
   "йога для беременных": "/class-types/06-yoga-prenatal.jpg",
+  "йога для женского здоровья": "/class-types/17-yoga-womens-health.jpg",
   "йога: для спины и позвоночника": "/class-types/07-yoga-spina-pozvonochnik.jpg",
   "йога для спины и позвоночника": "/class-types/07-yoga-spina-pozvonochnik.jpg",
   "йога: сила, гибкость и баланс": "/class-types/08-yoga-sila-gibkost-balans.jpg",
