@@ -14,7 +14,6 @@ import {
   Globe,
   Tags,
   Dumbbell,
-  ShieldCheck,
   DollarSign,
   ScrollText,
   UserRoundPlus,
@@ -24,21 +23,20 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
-import { useQuery } from "@tanstack/react-query";
+import { useCurrentProfile } from "@/hooks/use-current-profile";
+import { formatResponsibleShortName } from "@/lib/person-name";
 
 // ВАЖНО: Используем "export const", чтобы соответствовать import { Sidebar } в AdminLayout
 export const Sidebar = () => {
   const location = useLocation();
-
-  const { data: currentUserRole } = useQuery({
-    queryKey: ['current_user_role'],
-    queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return null;
-      const { data } = await supabase.from('profiles').select('role').eq('id', user.id).single();
-      return data?.role;
-    }
-  });
+  const { data: currentProfile, isLoading: isProfileLoading } = useCurrentProfile();
+  const currentUserRole = currentProfile?.role;
+  const accountName = isProfileLoading
+    ? "Загрузка…"
+    : currentProfile
+      ? formatResponsibleShortName(currentProfile)
+      : "Сотрудник";
+  const roleLabel = currentUserRole === "owner" ? "Управляющий" : currentUserRole === "admin" ? "Администратор" : "Сотрудник";
 
   const navigation = [
     { name: "Главная", href: "/dashboard", icon: Home },
@@ -54,9 +52,8 @@ export const Sidebar = () => {
     { name: "Новости", href: "/news", icon: Megaphone },
     { name: "Пробные", href: "/trials", icon: Percent },
     { name: "Новый клиент", href: "/admin/new-client", icon: UserRoundPlus },
-    { name: "Агрегаторы", href: "/aggregators", icon: Globe },
-    { name: "Все пользователи", href: "/admin/users", icon: ShieldCheck },
     ...(currentUserRole === 'owner' ? [
+      { name: "Агрегаторы", href: "/aggregators", icon: Globe },
       { name: "Сотрудники", href: "/staff", icon: UsersRound },
       { name: "Расчёт зарплаты", href: "/owner/payroll", icon: DollarSign },
       { name: "Журнал событий", href: "/owner/logs", icon: ScrollText },
@@ -107,11 +104,20 @@ export const Sidebar = () => {
       </nav>
 
       <div className="shrink-0 border-t border-slate-800 p-2">
+        <div
+          className="mb-1.5 min-w-0 rounded-lg border border-slate-700/70 bg-slate-800/70 px-1.5 py-1.5 text-center"
+          title={`Текущая учётная запись: ${accountName}`}
+          aria-label={`Текущая учётная запись: ${accountName}`}
+        >
+          <span className="block w-full truncate text-[10px] font-semibold leading-3 text-white">{accountName}</span>
+          <span className="mt-0.5 block w-full truncate text-[9px] leading-3 text-slate-400">{roleLabel}</span>
+        </div>
         <Button 
           variant="ghost" 
-          className="h-14 w-full flex-col gap-1 rounded-xl px-1 text-red-400 hover:bg-red-900/20 hover:text-red-300"
+          className="h-12 w-full flex-col gap-1 rounded-xl px-1 text-red-400 hover:bg-red-900/20 hover:text-red-300"
           onClick={handleLogout}
-          title="Выйти"
+          title={`Выйти из учётной записи ${accountName}`}
+          aria-label={`Выйти из учётной записи ${accountName}`}
         >
           <LogOut className="h-6 w-6" />
           <span className="text-[10px] font-semibold leading-none">Выйти</span>
